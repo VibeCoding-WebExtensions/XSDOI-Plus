@@ -45,6 +45,10 @@
     // —— 首页 / 个人中心 / 钱包 ——
     '.ledger-sum',                           // 余额统计块（当前余额/累计赚到/累计花掉）
     '.cc-card',                              // 近期比赛卡片
+    '.countdown-card',                       // 首页打卡区倒计时卡（保留左侧 3px 状态色条）
+    '.checked-done',                         // 首页打卡完成条（保留绿字）
+    '.sprint-badge',                         // 倒计时卡内「冲刺」徽标（currentColor 描边）
+    '.ann-pin-chip',                         // 公告置顶 chip（hover 半透明品牌蓝，见 board-beautify.js）
 
     // —— 个人主页 ——
     '.uh-hero',                              // 个人主页 hero（带极光层）
@@ -120,6 +124,7 @@
     '.description-body',                     // 题目描述体（原本透明，加亚克力卡片外观）
     '.el-popover',                           // popover（模糊走 ::before 伪元素，见 board-beautify.js）
     '.ai-banner',                            // AI 横幅（自带 blur(12px)，这里只补玻璃层）
+    '.fortune-seal',                         // 首页运势签（⚠️ 站点自带 :before 内圈，进 acrylic 会被折射层打架 → 只能放这里）
   ],
 
   // 只模糊、不加玻璃层（保留自定义背景）

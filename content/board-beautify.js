@@ -1621,6 +1621,75 @@
       '    rgba(255, 255, 255, 0.08) !important;',
       ...BF5,
       '  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28) !important;',
+      '}',
+
+      /* ---- 首页「打卡 / 倒计时」区 ---- */
+      /* 运势签 fortune-seal（.lv-best/.lv-good/.lv-mid/.lv-flat 给的是奶油实底 + 等级色：
+         .fortune-seal 的 border 不写颜色 → 走 currentColor，圆环自动跟随等级色，别去动它）。
+         底色交回统一玻璃层；这里只清掉 .lv-* 的实底，让「中吉」这类签变成玻璃圆片。
+         ⚠️ 这个元素只能进 glassOnly 数组，不能进 acrylic ——
+            站点自己有一个 :before 内圈（inset:4px + currentColor 边 + opacity .45），
+            进了 acrylic 后液态玻璃的折射层会去改这个 :before 的 inset/background，
+            和内圈打架（站点规则特异性更高，结果是双圈错位）。 */
+      '.fortune-seal {',
+      '  background: transparent !important;',
+      '}',
+      'html.theme-dark .fortune-seal {',
+      '  background: transparent !important;',
+      '}',
+      /* 倒计时卡 countdown-card（原 var(--c-f7f9fc) 实底 + border-left-width:3px 状态色条）。
+         ⚠️ 只改上/右/下三边颜色，绝不碰 border-left-color ——
+            左侧 3px 状态条由 .cd-danger(#d9543f) / .cd-warn(#c87e12) / .cd-safe(#2f6fef) 提供，
+            用 border 简写（或 border-color）会把三色条一起冲掉。 */
+      '.countdown-card {',
+      '  background: transparent !important;',
+      '  border-top-color: rgba(255, 255, 255, 0.5) !important;',
+      '  border-right-color: rgba(255, 255, 255, 0.5) !important;',
+      '  border-bottom-color: rgba(255, 255, 255, 0.5) !important;',
+      '}',
+      'html.theme-dark .countdown-card {',
+      '  background: transparent !important;',
+      '  border-top-color: rgba(255, 255, 255, 0.12) !important;',
+      '  border-right-color: rgba(255, 255, 255, 0.12) !important;',
+      '  border-bottom-color: rgba(255, 255, 255, 0.12) !important;',
+      '}',
+      /* 打卡完成条 checked-done（原绿色实底 var(--c-e7f6ef)，保留 #1d9e6f 绿字） */
+      '.checked-done {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.5) !important;',
+      '}',
+      'html.theme-dark .checked-done {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.12) !important;',
+      '}',
+      /* 倒计时卡内的「冲刺」徽标 sprint-badge（原 var(--c-fdecea) 橙底）。
+         用 currentColor 描边（同 .cc-status-pill / .cc-pill 的做法），
+         让边框自动跟随 .cd-warn/.cd-danger 的等级文字色，不必逐状态写规则。 */
+      '.sprint-badge {',
+      '  background: transparent !important;',
+      '  border: 1px solid currentColor !important;',
+      '}',
+      'html.theme-dark .sprint-badge {',
+      '  background: transparent !important;',
+      '  border: 1px solid currentColor !important;',
+      '}',
+      /* 公告置顶 chip ann-pin-chip（原 var(--c-f4f6f9) 灰底胶囊，border-radius:999px 已够圆）。
+         ⚠️ 站点的 :hover 背景（--primary-soft 实底）没有 !important，
+            会被统一玻璃层的 background-color: ... !important 一路压死 →
+            这里补一条半透明品牌蓝 hover 保住「可点」反馈（本站 primary = #409eff）。 */
+      '.ann-pin-chip {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.5) !important;',
+      '}',
+      'html.theme-dark .ann-pin-chip {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.12) !important;',
+      '}',
+      '.ann-pin-chip:hover {',
+      '  background-color: rgba(64, 158, 255, 0.16) !important;',
+      '}',
+      'html.theme-dark .ann-pin-chip:hover {',
+      '  background-color: rgba(64, 158, 255, 0.22) !important;',
       '}'
     );
 
