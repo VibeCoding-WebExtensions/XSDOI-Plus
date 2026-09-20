@@ -4,6 +4,8 @@
 // 覆盖 xsdoi.com 的文字 CSS 变量（--text-strong/main/second/muted 等），
 // 亮色模式默认黑、暗色模式默认白，用户可在 popup「字体颜色」面板自定义。
 // 只改文字颜色变量，不影响彩色字体（品牌色/等级色等）与编辑器（CodeMirror）字体。
+// 另：侧边栏菜单（#nav .el-menu-item）的文字色被站点写在**内联 style** 上，
+//     不走变量 → 这里额外单列两条 !important 规则（见 buildCSS 末尾注释）。
 // ============================================================
 
 (function () {
@@ -46,8 +48,32 @@
       'html:not(.theme-dark) {',
       vars(l, '  '),
       '}',
-      'html.theme-dark {',
+      /* ⚠️ 暗色必须写 `html.theme-dark.theme-dark`（重复类名提特异性）。
+         站点自己也定义了一套同名变量：
+             :root            -> --text-strong:#1f2733 ...（亮色，特异性 0,1,0）
+             html.theme-dark  -> --text-strong:#eef1f8 ...（暗色，特异性 0,1,1）
+         扩展的 <style> 在 document_start 插入，排在站点样式表**之前** →
+         暗色下 `html.theme-dark`(0,1,1) 与站点那条**特异性和重要性都相同**，靠源码顺序决胜 → 站点赢，
+         **自定义颜色在暗色主题里实际上一直没生效**（亮色因为站点是 :root(0,1,0)，扩展(0,1,1) 能赢，所以只有亮色看起来正常）。
+         重复一次类名把特异性提到 (0,2,1) 即可稳定压过，不依赖顺序。 */
+      'html.theme-dark.theme-dark {',
       vars(d, '  '),
+      '}',
+      /* ===== 侧边栏菜单文字（不走变量，必须单独写）=====
+         站点把每个菜单项的颜色由 JS 写成**内联 style**：
+           <li class="el-menu-item" style="padding-left:20px; color: rgb(168,176,194)">   （普通项，11 个）
+           <li class="el-menu-item is-active" style="padding-left:20px; color: rgb(152,164,255)">（激活项）
+         内联普通声明的优先级高于任何选择器（含带 id 的）→ 只改 CSS 变量对菜单**文字**无效；
+         而图标走的是 `.el-menu-item i[data-v-31527af1]{color:var(--text-second)}` 这条变量规则，
+         所以现象就是「只有图标跟着变色，文字不动」。
+         要压过内联只有一条路：作者样式表里的 `!important`（!important > 内联普通声明）。
+         ⚠️ 显式排除 .is-active：激活项是站点自己的 `color:var(--brand)!important`
+         + `background:var(--brand-soft)`，属于「彩色字体」（品牌色），保持不动。 */
+      'html:not(.theme-dark) #nav .el-menu-item:not(.is-active) {',
+      '  color: ' + rgba(l, 1) + ' !important;',
+      '}',
+      'html.theme-dark #nav .el-menu-item:not(.is-active) {',
+      '  color: ' + rgba(d, 1) + ' !important;',
       '}'
     ].join('\n');
   }
