@@ -1787,6 +1787,24 @@
       'html.theme-dark .checkin-btn:hover, html.theme-dark .checkin-btn:focus {',
       '  background-color: rgba(23, 26, 36, 0.72) !important;',
       '  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45) !important;',
+      '}',
+      /* 连续打卡 chip streak-chip：与 .rank-chip 同款（currentColor 描边，琥珀色文字保留）。
+         ⚠️ 这是全站唯一一个「站点用非 scoped + !important 写底色」的元素：
+         app.2ec51059.css 里 `.streak-chip{color:var(--ci-chip-fg,#c87e12)!important;
+         background:var(--ci-chip-bg,var(--c-fdf3e0))!important}`。
+         它的特异性(0,1,0) 与扩展的 `.streak-chip` **完全相同、重要性也相同** →
+         由源码顺序决胜：扩展的 <style> 在 document_start 就插进 head，排在站点 <link> 之前，
+         **所以站点那条会赢**（普通元素的站点规则没有 !important，才不会撞到这个坑）。
+         因此这里必须把选择器提到 `html .streak-chip`（(0,1,1)，靠元素计数压过 (0,1,0)），
+         并且**自己写玻璃底色**——统一玻璃层那条是 (0,1,0)，同样压不过站点。
+         文字色的 !important 交给站点，琥珀 #c87e12 原样保留。 */
+      'html .streak-chip {',
+      '  background-color: rgba(255, 255, 255, ' + a + ') !important;',
+      '  border: 1px solid currentColor !important;',
+      '}',
+      'html.theme-dark .streak-chip {',
+      '  background-color: rgba(23, 26, 36, ' + a + ') !important;',
+      '  border: 1px solid currentColor !important;',
       '}'
     );
 

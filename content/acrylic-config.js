@@ -53,6 +53,7 @@
     '.extra-card',                           // 打卡区「今日推荐 / 最近提交」卡（hover 提亮白边）
     '.reco-diff',                            // 推荐题难度标签（currentColor 描边，跟随 易/中/难 三色）
     '.checkin-btn',                          // 「今日打卡」按钮（去品牌蓝改玻璃，文字色改继承）
+    '.streak-chip',                          // 连续打卡 chip（⚠️ 站点非 scoped + !important，底色由 board-beautify 用 html 前缀自己写）
 
     // —— 个人主页 ——
     '.uh-hero',                              // 个人主页 hero（带极光层）
