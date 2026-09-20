@@ -1692,29 +1692,36 @@
       '  background-color: rgba(64, 158, 255, 0.22) !important;',
       '}',
 
-      /* ---- 首页打卡区「本周刷题」进度条 + 排名 chip ---- */
-      /* 轨道 pb-track（原 var(--c-edf0f5) 灰色实轨）：与 .cc-progress / .el-slider__runway 一样只清底色 */
+      /* ---- 首页打卡区「本周刷题」进度条 + 排名 chip + 推荐/最近卡 + 打卡按钮 ---- */
+      /* 轨道 pb-track（原 var(--c-edf0f5) 灰色实轨）：
+         ⚠️ 这里**不能**像 .cc-progress / .el-slider__runway 那样清成透明 —— 清掉之后进度 0
+         时整条轨道消失，只剩 pb-fill 孤零零一截，看不出「进度条」。
+         要的是「玻璃管 + 注水」：轨道给一层低 alpha 玻璃底色 + 内阴影做出凹槽感，
+         再由 pb-fill（更高 alpha）在里面当液面，两者靠 alpha 差形成液位分界。 */
       '.pb-track {',
-      '  background: transparent !important;',
+      '  background: rgba(255, 255, 255, 0.14) !important;',
+      '  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.10) !important;',
       '}',
       'html.theme-dark .pb-track {',
-      '  background: transparent !important;',
+      '  background: rgba(255, 255, 255, 0.07) !important;',
+      '  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35) !important;',
       '}',
-      /* 进度条 pb-fill（原 #4d86ff → #2f6fef 品牌蓝渐变）：去掉蓝条改玻璃棒，
-         取值与 .cc-progress-bar / .el-slider__bar 完全一致（顶部高光 + 半透明白底 + 细投影）。
+      /* 进度条 pb-fill（原 #4d86ff → #2f6fef 品牌蓝渐变）：去掉蓝条改玻璃液面。
+         alpha 比 pb-track 高一档（亮 .34 vs .14 / 暗 .16 vs .07）—— 这个差值就是「注水」的液位线，
+         所以这里刻意不再跟 .cc-progress-bar 对齐取值（那条是纯玻璃棒、身下没有槽）。
          注意：站点皮肤模式下 html[data-cos-checkin] .checkin-card .pb-fill:not(...) 那条
          带 !important 且特异性(0,4,0) 会赢下这里 —— 属于预期降级（皮肤自己定义了强调色）。 */
       '.pb-fill {',
       '  background:',
-      '    linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.18) 28%, rgba(255, 255, 255, 0) 46%, rgba(255, 255, 255, 0) 100%),',
-      '    rgba(255, 255, 255, 0.18) !important;',
+      '    linear-gradient(180deg, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.28) 28%, rgba(255, 255, 255, 0) 46%, rgba(255, 255, 255, 0) 100%),',
+      '    rgba(255, 255, 255, 0.34) !important;',
       ...BF5,
       '  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14) !important;',
       '}',
       'html.theme-dark .pb-fill {',
       '  background:',
-      '    linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.14) 28%, rgba(255, 255, 255, 0) 46%, rgba(255, 255, 255, 0) 100%),',
-      '    rgba(255, 255, 255, 0.08) !important;',
+      '    linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.16) 28%, rgba(255, 255, 255, 0) 46%, rgba(255, 255, 255, 0) 100%),',
+      '    rgba(255, 255, 255, 0.16) !important;',
       ...BF5,
       '  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28) !important;',
       '}',
@@ -1729,6 +1736,57 @@
       'html.theme-dark .rank-chip {',
       '  background: transparent !important;',
       '  border: 1px solid currentColor !important;',
+      '}',
+      /* 今日推荐 / 最近提交卡 extra-card（原 var(--c-f7f9fc) 实底 + var(--border) 描边）：
+         同 .cc-card 处理。
+         ⚠️ 站点的 :hover 有 border-color: var(--c-d9e2f3)（无 !important），会被这里的
+         !important 边框压死 → 补一条「提亮白边」的 hover，保住悬停反馈（transform 上浮不受影响）。 */
+      '.extra-card {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.5) !important;',
+      '}',
+      'html.theme-dark .extra-card {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.12) !important;',
+      '}',
+      '.extra-card:hover {',
+      '  border-color: rgba(255, 255, 255, 0.85) !important;',
+      '}',
+      'html.theme-dark .extra-card:hover {',
+      '  border-color: rgba(255, 255, 255, 0.30) !important;',
+      '}',
+      /* 难度标签 reco-diff：底色同样在变体上（.diff-easy 绿 #1d9e6f / .diff-mid 琥珀 #c87e12 /
+         .diff-hard 橙红 var(--c-d9543f)）→ 与 .rank-chip 完全同款：currentColor 描边。 */
+      '.reco-diff {',
+      '  background: transparent !important;',
+      '  border: 1px solid currentColor !important;',
+      '}',
+      'html.theme-dark .reco-diff {',
+      '  background: transparent !important;',
+      '  border: 1px solid currentColor !important;',
+      '}',
+      /* 今日打卡按钮 checkin-btn（原 #4d86ff → #2f6fef 品牌蓝渐变 + 白字）：
+         去掉品牌蓝改玻璃按钮 + 亚克力白边。
+         ⚠️ 关键：原样式是白色文字（color:#fff）。玻璃底是半透明白，白字在亮色主题下完全看不清 ——
+         必须把文字色交回继承（用 inherit 而不是写死深/浅色，这样明暗两套主题各自正确，
+         同 .ct-hero 亮色「白字改深色」的思路）。elem 的 border-radius:11px 保留。
+         站点 hover 是换渐变 + color:#fff（无 !important），会被压死 → 补一条「提亮玻璃」的 hover。 */
+      '.checkin-btn {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.5) !important;',
+      '  color: inherit !important;',
+      '}',
+      'html.theme-dark .checkin-btn {',
+      '  background: transparent !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.12) !important;',
+      '}',
+      '.checkin-btn:hover, .checkin-btn:focus {',
+      '  background-color: rgba(255, 255, 255, 0.72) !important;',
+      '  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16) !important;',
+      '}',
+      'html.theme-dark .checkin-btn:hover, html.theme-dark .checkin-btn:focus {',
+      '  background-color: rgba(23, 26, 36, 0.72) !important;',
+      '  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45) !important;',
       '}'
     );
 

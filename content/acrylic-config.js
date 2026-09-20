@@ -50,6 +50,9 @@
     '.sprint-badge',                         // 倒计时卡内「冲刺」徽标（currentColor 描边）
     '.ann-pin-chip',                         // 公告置顶 chip（hover 半透明品牌蓝，见 board-beautify.js）
     '.rank-chip',                            // 打卡区排名 chip（currentColor 描边，跟随 灰/绿/红 三态）
+    '.extra-card',                           // 打卡区「今日推荐 / 最近提交」卡（hover 提亮白边）
+    '.reco-diff',                            // 推荐题难度标签（currentColor 描边，跟随 易/中/难 三色）
+    '.checkin-btn',                          // 「今日打卡」按钮（去品牌蓝改玻璃，文字色改继承）
 
     // —— 个人主页 ——
     '.uh-hero',                              // 个人主页 hero（带极光层）
