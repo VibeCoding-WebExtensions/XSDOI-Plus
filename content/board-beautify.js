@@ -1690,6 +1690,45 @@
       '}',
       'html.theme-dark .ann-pin-chip:hover {',
       '  background-color: rgba(64, 158, 255, 0.22) !important;',
+      '}',
+
+      /* ---- 首页打卡区「本周刷题」进度条 + 排名 chip ---- */
+      /* 轨道 pb-track（原 var(--c-edf0f5) 灰色实轨）：与 .cc-progress / .el-slider__runway 一样只清底色 */
+      '.pb-track {',
+      '  background: transparent !important;',
+      '}',
+      'html.theme-dark .pb-track {',
+      '  background: transparent !important;',
+      '}',
+      /* 进度条 pb-fill（原 #4d86ff → #2f6fef 品牌蓝渐变）：去掉蓝条改玻璃棒，
+         取值与 .cc-progress-bar / .el-slider__bar 完全一致（顶部高光 + 半透明白底 + 细投影）。
+         注意：站点皮肤模式下 html[data-cos-checkin] .checkin-card .pb-fill:not(...) 那条
+         带 !important 且特异性(0,4,0) 会赢下这里 —— 属于预期降级（皮肤自己定义了强调色）。 */
+      '.pb-fill {',
+      '  background:',
+      '    linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.18) 28%, rgba(255, 255, 255, 0) 46%, rgba(255, 255, 255, 0) 100%),',
+      '    rgba(255, 255, 255, 0.18) !important;',
+      ...BF5,
+      '  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14) !important;',
+      '}',
+      'html.theme-dark .pb-fill {',
+      '  background:',
+      '    linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.14) 28%, rgba(255, 255, 255, 0) 46%, rgba(255, 255, 255, 0) 100%),',
+      '    rgba(255, 255, 255, 0.08) !important;',
+      ...BF5,
+      '  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28) !important;',
+      '}',
+      /* 排名 chip rank-chip：底色写在 .rank-none/.rank-up/.rank-down 变体上
+         （#f1f3f6 灰 / #e7f6ef 绿 / #fdecea 橙红）。
+         用 currentColor 描边，边框自动跟随三种状态的文字色，不必逐状态写规则
+         （同 .sprint-badge / .cc-status-pill 的做法）。 */
+      '.rank-chip {',
+      '  background: transparent !important;',
+      '  border: 1px solid currentColor !important;',
+      '}',
+      'html.theme-dark .rank-chip {',
+      '  background: transparent !important;',
+      '  border: 1px solid currentColor !important;',
       '}'
     );
 

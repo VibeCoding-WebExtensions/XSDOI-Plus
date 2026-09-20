@@ -49,6 +49,7 @@
     '.checked-done',                         // 首页打卡完成条（保留绿字）
     '.sprint-badge',                         // 倒计时卡内「冲刺」徽标（currentColor 描边）
     '.ann-pin-chip',                         // 公告置顶 chip（hover 半透明品牌蓝，见 board-beautify.js）
+    '.rank-chip',                            // 打卡区排名 chip（currentColor 描边，跟随 灰/绿/红 三态）
 
     // —— 个人主页 ——
     '.uh-hero',                              // 个人主页 hero（带极光层）
