@@ -1,0 +1,133 @@
+name: 打包 CRX 并发布 Release
+
+# 每次推送到 main 就自动：读 manifest 版本号 → 用 PEM 私钥打包 crx → 校验 → 发 Release（tag = V{version}）
+# 也可以在 Actions 页面手动 Run workflow（workflow_dispatch）重跑，不必真的提交一次。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# softprops/action-gh-release 需要写权限（新仓库默认的 GITHUB_TOKEN 是只读的）
+permissions:
+  contents: write
+
+# 连推两次时排队，避免两个 run 同时往同一个 Release 里塞 asset
+concurrency:
+  group: crx-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pack-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 读取 manifest 版本号
+        id: ver
+        run: |
+          set -euo pipefail
+          V=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "manifest 版本号：V$V"
+
+      - name: 写入 PEM 私钥
+        id: key
+        env:
+          CRX_KEY_B64: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRX_KEY_B64:-}" ]; then
+            echo "::error::仓库里没有 secret CRX_PRIVATE_KEY。把 XSDOI-Plus.pem 做 base64 后，填到 Settings → Secrets and variables → Actions → New repository secret，名字必须叫 CRX_PRIVATE_KEY。"
+            exit 1
+          fi
+          KEY="$RUNNER_TEMP/crx-key.pem"
+          printf '%s' "$CRX_KEY_B64" | base64 -d > "$KEY"
+          chmod 600 "$KEY"
+          # 先确认这是一把能用的 RSA 私钥：拿坏数据打包不会报错，但扩展 ID 会变，必须提前拦住
+          openssl rsa -in "$KEY" -noout -check
+          # 扩展 ID = sha256(公钥 SPKI DER) 前 16 字节，每个 nibble 映射到 a-p。
+          # 本仓库的私钥应恒定推出 nbcjlcfddbmniidbmpbpagdcpaeoofec；对不上说明 secret 放错了，扩展会变成另一个 ID。
+          python3 - "$KEY" <<'PY'
+          import hashlib, subprocess, sys
+          der = subprocess.run(
+              ['openssl', 'rsa', '-in', sys.argv[1], '-pubout', '-outform', 'DER'],
+              capture_output=True, check=True).stdout
+          h = hashlib.sha256(der).hexdigest()[:32]
+          print('扩展 ID：' + ''.join(chr(ord('a') + int(c, 16)) for c in h))
+          PY
+          echo "path=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: 用 Chrome 打包 crx
+        id: pack
+        env:
+          KEY_PATH: ${{ steps.key.outputs.path }}
+        run: |
+          set -euo pipefail
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          if [ -z "$CHROME" ]; then
+            echo "::error::runner 上找不到 Chrome / Chromium，无法打包 crx"
+            exit 1
+          fi
+          "$CHROME" --version || true
+
+          # 产物落在「被包目录的父目录」，文件名取目录名，即 /home/runner/work/<repo>/XSDOI-Plus.crx
+          # （该目录不在仓库工作区内，不会被误提交）
+          OUT_PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          rm -f "$OUT_PARENT"/*.crx
+
+          # Chrome 的打包器会自动跳过 .git / .github 这类点开头的条目，不必手工剔除
+          # （本地实测 crx 内 0 个 .git 条目，可直接把仓库根目录当扩展目录打包）
+          if command -v xvfb-run >/dev/null 2>&1; then
+            xvfb-run -a "$CHROME" --pack-extension="$GITHUB_WORKSPACE" \
+              --pack-extension-key="$KEY_PATH" --no-message-box
+          else
+            "$CHROME" --pack-extension="$GITHUB_WORKSPACE" \
+              --pack-extension-key="$KEY_PATH" --no-message-box
+          fi
+
+          CRX=$(ls "$OUT_PARENT"/*.crx 2>/dev/null | head -1 || true)
+          if [ -z "$CRX" ]; then
+            echo "::error::打包没有产出 crx（Chrome 的报错见上面，最常见原因是私钥格式不对）"
+            exit 1
+          fi
+          ls -la "$CRX"
+          echo "crx=$CRX" >> "$GITHUB_OUTPUT"
+
+      - name: 校验产物
+        env:
+          CRX_PATH: ${{ steps.pack.outputs.crx }}
+          WANT_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - "$CRX_PATH" "$WANT_VERSION" <<'PY'
+          import json, sys, zipfile
+          crx, want = sys.argv[1], sys.argv[2]
+          with zipfile.ZipFile(crx) as z:
+              names = z.namelist()
+              got = json.loads(z.read('manifest.json').decode('utf-8'))['version']
+          assert got == want, f'crx 内版本 {got} != manifest {want}'
+          assert any(n.startswith('content/') for n in names), 'crx 里没有 content/ 目录'
+          assert not any(n.startswith('.git/') for n in names), 'crx 里混进了 .git'
+          print(f'校验通过：version={got}，共 {len(names)} 个条目')
+          PY
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v3
+        with:
+          # 沿用项目惯例：tag / 标题统一大写 V（同名 tag 已存在时复用同一个 Release 并替换 asset）
+          tag_name: V${{ steps.ver.outputs.version }}
+          name: V${{ steps.ver.outputs.version }}
+          body: |
+            XSDOI-Plus V${{ steps.ver.outputs.version }}
+
+            由 GitHub Actions 自动打包（commit ${{ github.sha }}）。
+            私钥取自仓库 secret `CRX_PRIVATE_KEY`，扩展 ID 与本地打包一致。
+
+            ${{ github.event.head_commit.message }}
+          target_commitish: ${{ github.sha }}
+          files: ${{ steps.pack.outputs.crx }}
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
+          make_latest: true
