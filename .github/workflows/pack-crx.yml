@@ -100,17 +100,10 @@ jobs:
           WANT_VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          python3 - "$CRX_PATH" "$WANT_VERSION" <<'PY'
-          import json, sys, zipfile
-          crx, want = sys.argv[1], sys.argv[2]
-          with zipfile.ZipFile(crx) as z:
-              names = z.namelist()
-              got = json.loads(z.read('manifest.json').decode('utf-8'))['version']
-          assert got == want, f'crx 内版本 {got} != manifest {want}'
-          assert any(n.startswith('content/') for n in names), 'crx 里没有 content/ 目录'
-          assert not any(n.startswith('.git/') for n in names), 'crx 里混进了 .git'
-          print(f'校验通过：version={got}，共 {len(names)} 个条目')
-          PY
+          # 脚本放在 .github/ 下（点目录不会被 Chrome 打进 crx）。
+          # 它会断言「crx 内嵌公钥推出的扩展 ID == 本仓库那把私钥的 ID」，
+          # 这是唯一能证明 secret 没放错的硬证据 —— 放错会静默打出一个同名的**另一个扩展**。
+          python3 .github/verify-crx.py "$CRX_PATH" "$WANT_VERSION"
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v3
