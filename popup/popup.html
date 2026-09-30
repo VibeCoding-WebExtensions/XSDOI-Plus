@@ -691,7 +691,7 @@
       <!-- ============ 网页桌宠 ============ -->
       <section class="view" id="view-pet">
         <h2 class="view-title">网页桌宠</h2>
-        <p class="view-sub">题目页上的圆球小宠物，可拖动、可放入自定义图片</p>
+        <p class="view-sub">页面上的圆球小宠物：可拖动、贴底散步、可放入自定义图片</p>
 
         <div class="board-row">
           <div class="board-label">
@@ -727,36 +727,6 @@
         </div>
         <p class="tip">开关与裁剪调整好后，点击「保存配置」立即生效并持久化；选择 / 清除图片则立即生效。</p>
 
-        <hr class="section-hr" style="margin:16px 0 12px;border:none;border-top:1px solid var(--border-soft);">
-
-        <div class="label" style="margin-bottom:8px;">聊天 API 设置</div>
-        <div style="margin-bottom:8px;">
-          <label style="font-size:12px;color:var(--text-2);">API 地址</label>
-          <input type="text" id="pet-api-url" placeholder="https://api.deepseek.com" style="width:100%;padding:7px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;outline:none;">
-        </div>
-        <div style="margin-bottom:8px;">
-          <label style="font-size:12px;color:var(--text-2);">模型名</label>
-          <input type="text" id="pet-model" placeholder="deepseek-chat / glm-4 / agnes 等" style="width:100%;padding:7px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;outline:none;">
-        </div>
-        <div style="margin-bottom:8px;">
-          <label style="font-size:12px;color:var(--text-2);">API Key</label>
-          <input type="password" id="pet-api-key" placeholder="输入你的 API Key" style="width:100%;padding:7px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;outline:none;">
-        </div>
-        <button class="bg-btn primary" id="pet-api-save" style="width:100%;margin-top:4px;">保存 API 设置</button>
-        <p class="tip">设置保存后，双击宠物打开聊天窗口时会自动填入，无需手动填写。</p>
-
-        <hr class="section-hr" style="margin:16px 0 12px;border:none;border-top:1px solid var(--border-soft);">
-
-        <div class="label" style="margin-bottom:8px;">系统提示词设置</div>
-        <div style="margin-bottom:8px;">
-          <label style="font-size:12px;color:var(--text-2);">提示词</label>
-          <textarea id="pet-system-prompt" placeholder="输入系统提示词..." style="width:100%;height:120px;padding:7px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;outline:none;resize:vertical;font-family:monospace;"></textarea>
-        </div>
-        <div class="bg-btn-pair">
-          <button class="bg-btn primary" id="pet-prompt-save">保存提示词</button>
-          <button class="bg-btn" id="pet-prompt-reset" style="flex:1;">恢复默认</button>
-        </div>
-        <p class="tip">系统提示词会发送给 AI，用于设定其角色和行为。点击「恢复默认」可还原内置提示词。</p>
       </section>
 
       <!-- ============ 代码备份 ============ -->

@@ -4,9 +4,6 @@
 // storage.local 的 webPetImg（自定义图片 dataURL），供 content/web-pet.js 读取。
 // 开关与裁剪为草稿模式：界面调整不写 storage，点「保存配置」立即应用并持久化；
 // 选择 / 清除图片仍立即生效。
-//
-// API 配置存于 storage.sync（webPetApiUrl / webPetModel / webPetApiKey），
-// 由 popup 写入，content/web-pet.js 的聊天窗口直接读取，无需在聊天窗口内编辑。
 // ============================================================
 
 (function () {
@@ -15,25 +12,11 @@
   var ENABLE_KEY = 'webPetEnabled';
   var IMG_KEY = 'webPetImg';
   var CROP_KEY = 'webPetCrop';
-  var API_URL_KEY = 'webPetApiUrl';
-  var API_MODEL_KEY = 'webPetModel';
-  var API_KEY_KEY = 'webPetApiKey';
-  var SYSTEM_PROMPT_KEY = 'webPetSystemPrompt';
   var IMG_MAX_BYTES = 2 * 1024 * 1024;
   var DEFAULT_CROP = { scale: 2, cx: 0.5, cy: 0.5 };
   var SCALE_MIN = 1;
   var SCALE_MAX = 8;
   var MIN_R = 8; // 圆最小半径 px
-
-  // 默认系统提示词（与 content/web-pet.js 的 DEFAULT_SYSTEM_PROMPT 保持一致）
-  var DEFAULT_SYSTEM_PROMPT = [
-    '你是一名编程助手，你需要用简体中文回答用户的消息（哪怕用户说的是英文）。',
-    '你的回答需要遵循 Markdown 格式。',
-    '所有数学公式（无论长短）都必须用 LaTeX 定界符包裹：行内公式用 $...$，独立公式用 $$...$$。',
-    '即使是简短的数学表达式（如 Re(z)、Γ(z)、x > 0）也必须用 $...$ 包裹，绝对不要用反引号 ` 包裹公式——反引号只用于代码，不用于数学。',
-    '代码块用 ``` 包裹，并注明编程语言，例如：\n```cpp\n// 代码\n```\n当用户没有指明编程语言时，默认使用 C++14。',
-    '回答要清晰、简洁、有帮助。'
-  ].join(' ');
 
   var enabledEl = document.getElementById('pet-enabled');
   var pickBtn = document.getElementById('pet-img-pick');
@@ -45,15 +28,6 @@
   var circle = document.getElementById('pet-crop-circle');
   var handle = document.getElementById('pet-crop-handle');
   var saveBtn = document.getElementById('pet-save');
-
-  // API 设置输入框
-  var apiUrlInput = document.getElementById('pet-api-url');
-  var apiModelInput = document.getElementById('pet-model');
-  var apiKeyInput = document.getElementById('pet-api-key');
-  var apiSaveBtn = document.getElementById('pet-api-save');
-  var systemPromptInput = document.getElementById('pet-system-prompt');
-  var promptSaveBtn = document.getElementById('pet-prompt-save');
-  var promptResetBtn = document.getElementById('pet-prompt-reset');
 
   var currentCrop = Object.assign({}, DEFAULT_CROP); // 界面草稿值（保存时才应用）
   var savedCrop = Object.assign({}, DEFAULT_CROP);   // 已持久化值
@@ -87,14 +61,6 @@
       } else {
         showEmpty();
       }
-    });
-    // 加载 API 配置和系统提示词
-    chrome.storage.sync.get([API_URL_KEY, API_MODEL_KEY, API_KEY_KEY, SYSTEM_PROMPT_KEY], function (cfg) {
-      if (cfg[API_URL_KEY]) apiUrlInput.value = cfg[API_URL_KEY];
-      if (cfg[API_MODEL_KEY]) apiModelInput.value = cfg[API_MODEL_KEY];
-      if (cfg[API_KEY_KEY]) apiKeyInput.value = cfg[API_KEY_KEY];
-      // 已保存的自定义提示词优先显示；从未保存过则显示内置默认提示词
-      systemPromptInput.value = cfg[SYSTEM_PROMPT_KEY] || DEFAULT_SYSTEM_PROMPT;
     });
   }
 
@@ -262,54 +228,6 @@
       currentCrop = Object.assign({}, next);
       updateSaveState();
       flashSaveBtn('saved', '已保存 ✓');
-    });
-  });
-
-  // ---------- API 设置保存 ----------
-  apiSaveBtn.addEventListener('click', function () {
-    chrome.storage.sync.set({
-      [API_URL_KEY]: apiUrlInput.value.trim(),
-      [API_MODEL_KEY]: apiModelInput.value.trim(),
-      [API_KEY_KEY]: apiKeyInput.value.trim()
-    }, function () {
-      if (chrome.runtime.lastError) {
-        apiSaveBtn.textContent = '保存失败，请重试';
-        setTimeout(function () { apiSaveBtn.textContent = '保存 API 设置'; }, 1500);
-        return;
-      }
-      apiSaveBtn.textContent = '已保存 ✓';
-      setTimeout(function () { apiSaveBtn.textContent = '保存 API 设置'; }, 1500);
-    });
-  });
-
-  // ---------- 系统提示词保存 ----------
-  promptSaveBtn.addEventListener('click', function () {
-    chrome.storage.sync.set({
-      [SYSTEM_PROMPT_KEY]: systemPromptInput.value.trim()
-    }, function () {
-      if (chrome.runtime.lastError) {
-        promptSaveBtn.textContent = '保存失败，请重试';
-        setTimeout(function () { promptSaveBtn.textContent = '保存提示词'; }, 1500);
-        return;
-      }
-      promptSaveBtn.textContent = '已保存 ✓';
-      setTimeout(function () { promptSaveBtn.textContent = '保存提示词'; }, 1500);
-    });
-  });
-
-  // ---------- 系统提示词恢复默认 ----------
-  promptResetBtn.addEventListener('click', function () {
-    systemPromptInput.value = DEFAULT_SYSTEM_PROMPT;
-    chrome.storage.sync.set({
-      [SYSTEM_PROMPT_KEY]: DEFAULT_SYSTEM_PROMPT
-    }, function () {
-      if (chrome.runtime.lastError) {
-        promptResetBtn.textContent = '恢复失败，请重试';
-        setTimeout(function () { promptResetBtn.textContent = '恢复默认'; }, 1500);
-        return;
-      }
-      promptResetBtn.textContent = '已恢复 ✓';
-      setTimeout(function () { promptResetBtn.textContent = '恢复默认'; }, 1500);
     });
   });
 
