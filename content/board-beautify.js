@@ -768,14 +768,21 @@
       '  background-color: transparent !important;',
       '  border-color: rgba(255, 255, 255, 0.12) !important;',
       '}',
-      /* 开关 el-switch：未选中态半透明，选中态保留品牌色 */
+      /* 开关 el-switch：未选中态半透明 + 中性描边。
+         ⚠️ 为什么不用统一的「亚克力白边」：开关是**有填充**的控件，站点默认边框 #dcdfe6 与填充同色，
+            而 rgba(255,255,255,0.5) 白边在亮色下又与填充 / 卡片同色 → 两种写法都等于「没有边框」。
+            这里改用中性描边（亮 rgba(0,0,0,.12) / 暗 rgba(255,255,255,.22)）让轮廓真正可见。 */
       '.el-switch__core {',
       '  background-color: rgba(220, 223, 230, ' + a + ') !important;',
-      '  border-color: rgba(255, 255, 255, 0.5) !important;',
+      '  border: 1px solid rgba(0, 0, 0, 0.12) !important;',
       '}',
       'html.theme-dark .el-switch__core {',
-      '  border-color: rgba(255, 255, 255, 0.12) !important;',
+      '  border: 1px solid rgba(255, 255, 255, 0.22) !important;',
       '}',
+      /* ⚠️ 已知问题（V4.5.13 记录，未修）：上面那条 background-color 的 !important 会把选中态的
+         品牌蓝一起压成灰色 —— !important 战胜普通声明，与特异性无关，站点
+         .el-switch.is-checked .el-switch__core{background:#409eff} 完全失效。
+         想恢复「开/关」可辨识，需把上面那条改成 `.el-switch:not(.is-checked) .el-switch__core`。 */
       /* 回到顶部按钮 el-backtop（圆形，加半透明背景 + 亚克力边框） */
       '.el-backtop {',
       '  background-color: transparent !important;',
