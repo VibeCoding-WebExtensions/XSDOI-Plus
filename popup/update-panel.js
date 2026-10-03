@@ -13,6 +13,9 @@
 
   var REPO = 'VibeCoding-WebExtensions/XSDOI-Plus';
   var API_URL = 'https://api.github.com/repos/' + REPO + '/releases/latest';
+  // GitHub 的「最新发布」指针：永远 302 到当前最新 tag 的 Release 页，不依赖检测结果，
+  // 所以按钮常驻 —— 检测失败、或本地是开发版时，用户照样能自己点进去下载
+  var RELEASE_URL = 'https://github.com/' + REPO + '/releases/latest';
   var TIMEOUT_MS = 12000;
 
   var currentEl = document.getElementById('update-current');
@@ -49,7 +52,7 @@
   // ---------- 检测 ----------
   function check() {
     checkBtn.disabled = true;
-    releaseBtn.style.display = 'none';
+    releaseBtn.textContent = '打开发布页';
     setStatus('正在检测…');
 
     var timer = setTimeout(function () {
@@ -81,15 +84,13 @@
         }
         var c = cmpVer(latest, mine);
         if (c > 0) {
-          setStatus('发现新版本 V' + latest.join('.') + '，当前 V' + currentVer, 'err');
-          if (data.html_url) {
-            releaseBtn.dataset.url = data.html_url;
-            releaseBtn.style.display = '';
-          }
+          setStatus('发现新版本 V' + latest.join('.') + '，当前 V' + currentVer + '，点右侧按钮去下载', 'err');
+          releaseBtn.textContent = '打开发布页（V' + latest.join('.') + '）';
         } else if (c === 0) {
           setStatus('已是最新版本 V' + currentVer, 'ok');
         } else {
-          setStatus('本地 V' + currentVer + ' 高于线上最新 V' + latest.join('.') + '（本地可能是开发版）', 'err');
+          // 只是信息、不是错误 —— 用默认中性色，别染红
+          setStatus('本地 V' + currentVer + ' 高于线上最新 V' + latest.join('.') + '（本地可能是开发版）');
         }
       })
       .catch(function (e) {
@@ -103,8 +104,7 @@
   checkBtn.addEventListener('click', check);
 
   releaseBtn.addEventListener('click', function () {
-    var url = releaseBtn.dataset.url;
-    if (url) chrome.tabs.create({ url: url });
+    chrome.tabs.create({ url: RELEASE_URL });
   });
 
   extBtn.addEventListener('click', function () {
