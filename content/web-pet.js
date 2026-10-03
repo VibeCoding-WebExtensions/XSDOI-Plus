@@ -22,6 +22,8 @@
   var ENABLE_KEY = 'webPetEnabled';     // popup「桌宠」面板开关
   var IMG_KEY = 'webPetImg';            // 自定义图片 dataURL（storage.local）
   var CROP_KEY = 'webPetCrop';          // 裁剪参数 { scale, cx, cy }（popup 可视化裁剪器）
+  var BOUNCE_KEY = 'webPetBounce';      // 弹性系数 = 恢复系数 e（0.2~1，popup「桌宠」面板）
+  var THROW_KEY = 'webPetThrow';        // 抛掷力度倍率（0.3~2，popup「桌宠」面板）
 
   var PET_SIZE = 56;   // 显示尺寸 px
   var MARGIN = 8;      // 与视口边缘的最小间距 px
@@ -93,11 +95,29 @@
 
   // 轨迹碰撞参数
   var COLLISION_RADIUS = PET_SIZE / 2 + 4; // 宠物碰撞半径（减小避免穿模）
-  var BOUNCE_DAMPING = 0.9;              // 反弹阻尼系数
-  var BOUNCE_FORCE = 1.3;                // 反弹力倍增（30% 能量增益，过高会放大水平速度）
-  var MAX_BOUNCE_VY = -18;               // 最大向上反弹速度
+  // 弹性系数 = 物理上的恢复系数 e（0 = 不弹，1 = 完全弹性），popup 可调 0.2~1。
+  // ⚠️ V4.6.0 之前这里是 BOUNCE_DAMPING(0.9) × BOUNCE_FORCE(1.3) = **1.17 > 1** ——
+  //    每次碰撞反而多 17% 动能，越弹越高；再叠加固定上限 -18px/frame，
+  //    在 G=0.15 下单次弹跳高度 18²/(2×0.15) = 1080px，比一屏还高。
+  var bounceCoef = 0.5;                  // storage.sync webPetBounce
+  var throwCoef = 1.0;                   // storage.sync webPetThrow
   var COLLISION_COOLDOWN = 6;            // 碰撞冷却帧数（避免反弹瞬移）
   var collisionCooldown = 0;             // 当前冷却计时器
+
+  // 反弹速度上限随弹性缩放：固定上限会让低弹性「该落还弹」（速度被顶住、能量不衰减）。
+  // 弹跳高度 h = v²/(2G)：e=0.2 → v≈6 → h≈120px；e=0.5 → v≈10.5 → h≈368px；e=1 → v=18 → h≈1080px
+  function maxBounceVy() { return -(3 + 15 * bounceCoef); }
+
+  // 两个系数取自 storage，非法值一律回落默认值
+  function normalizeBounce(v) {
+    var n = parseFloat(v);
+    return isNaN(n) ? 0.5 : Math.max(0.2, Math.min(1, n));
+  }
+
+  function normalizeThrow(v) {
+    var n = parseFloat(v);
+    return isNaN(n) ? 1.0 : Math.max(0.3, Math.min(2, n));
+  }
 
   // 规范化裁剪参数（兼容旧值/非法值）
   function normalizeCrop(v) {
@@ -311,9 +331,11 @@
         flyVy = (b.y - a.y) / dt * 16;
       }
     }
-    flyVy = flyVy * 0.6;
-    flyVy = Math.max(-8, Math.min(8, flyVy));
-    flyVx = Math.max(-4, Math.min(4, flyVx));
+    // 抛掷力度：初速度与速度上限一起缩放（上限不缩放的话，滑块拉满也不会「抛得更远」）
+    var tVyMax = 8 * throwCoef;
+    var tVxMax = 4 * throwCoef;
+    flyVy = Math.max(-tVyMax, Math.min(tVyMax, flyVy * 0.6 * throwCoef));
+    flyVx = Math.max(-tVxMax, Math.min(tVxMax, flyVx * throwCoef));
     vxFly = flyVx;
     vyFly = flyVy;
   }
@@ -325,8 +347,9 @@
     px += vxFly;
     py += vyFly;
     var bounds = clampToViewport();
-    if (bounds.left || bounds.right) vxFly = -vxFly * BOUNCE_DAMPING;
-    if (bounds.top) vyFly = -vyFly * BOUNCE_DAMPING;
+    // 撞视口边缘的反弹也走同一个弹性系数，否则拖到边上的手感与碰撞不一致
+    if (bounds.left || bounds.right) vxFly = -vxFly * bounceCoef;
+    if (bounds.top) vyFly = -vyFly * bounceCoef;
     applyPos();
     checkTrailCollision();
     var ground = groundY();
@@ -377,10 +400,10 @@
         applyPos();
         var vDot = vxFly * nx + vyFly * ny;
         if (vDot < 0) {
-          vxFly = (vxFly - 2 * vDot * nx) * BOUNCE_DAMPING * BOUNCE_FORCE;
-          vyFly = (vyFly - 2 * vDot * ny) * BOUNCE_DAMPING * BOUNCE_FORCE;
+          vxFly = (vxFly - 2 * vDot * nx) * bounceCoef;
+          vyFly = (vyFly - 2 * vDot * ny) * bounceCoef;
         }
-        vyFly = Math.max(MAX_BOUNCE_VY, vyFly);
+        vyFly = Math.max(maxBounceVy(), vyFly);
         var speed = Math.sqrt(vxFly * vxFly + vyFly * vyFly);
         if (speed < 0.5) {
           vxFly = nx * 3;
@@ -433,11 +456,11 @@
 
     var vDotN = vxFly * nx + vyFly * ny;
     if (vDotN < 0) {
-      vxFly = (vxFly - 2 * vDotN * nx) * BOUNCE_DAMPING * BOUNCE_FORCE;
-      vyFly = (vyFly - 2 * vDotN * ny) * BOUNCE_DAMPING * BOUNCE_FORCE;
+      vxFly = (vxFly - 2 * vDotN * nx) * bounceCoef;
+      vyFly = (vyFly - 2 * vDotN * ny) * bounceCoef;
     }
 
-    vyFly = Math.max(MAX_BOUNCE_VY, vyFly);
+    vyFly = Math.max(maxBounceVy(), vyFly);
     var newSpeed = Math.sqrt(vxFly * vxFly + vyFly * vyFly);
     if (newSpeed < 0.5) {
       vxFly = nx * 3;
@@ -486,13 +509,15 @@
     // ⚠️ 会话历史（webPetSessions / webPetCurrentSessionId）**故意不动** —— 那是用户数据，
     //    要清得用户自己发话。
     var LEGACY_CHAT_KEYS = ['webPetApiUrl', 'webPetModel', 'webPetApiKey', 'webPetSystemPrompt'];
-    chrome.storage.sync.get([STORAGE_KEY, ENABLE_KEY, CROP_KEY].concat(LEGACY_CHAT_KEYS), function (items) {
+    chrome.storage.sync.get([STORAGE_KEY, ENABLE_KEY, CROP_KEY, BOUNCE_KEY, THROW_KEY].concat(LEGACY_CHAT_KEYS), function (items) {
       var stale = LEGACY_CHAT_KEYS.filter(function (k) { return items[k] !== undefined; });
       if (stale.length) {
         try { chrome.storage.sync.remove(stale); } catch (e) { /* 上下文失效等忽略 */ }
       }
       enabled = items[ENABLE_KEY] !== false;
       crop = normalizeCrop(items[CROP_KEY]);
+      bounceCoef = normalizeBounce(items[BOUNCE_KEY]);
+      throwCoef = normalizeThrow(items[THROW_KEY]);
       var sp = items[STORAGE_KEY];
       if (sp) {
         // 只恢复水平位置；垂直位置强制贴底——桌宠每次生成直接出现在底部散步，
@@ -528,6 +553,13 @@
     if (area === 'sync' && changes[CROP_KEY]) {
       crop = normalizeCrop(changes[CROP_KEY].newValue);
       renderFace();
+    }
+    // 弹性 / 抛掷力度：不用重绘，下一帧 updateParabola 直接用新值
+    if (area === 'sync' && changes[BOUNCE_KEY]) {
+      bounceCoef = normalizeBounce(changes[BOUNCE_KEY].newValue);
+    }
+    if (area === 'sync' && changes[THROW_KEY]) {
+      throwCoef = normalizeThrow(changes[THROW_KEY].newValue);
     }
     if (area === 'local' && changes[IMG_KEY]) {
       var v = changes[IMG_KEY].newValue;

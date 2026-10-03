@@ -18,6 +18,7 @@
       <div class="nav-item" data-view="clickfx">点击特效</div>
       <div class="nav-item" data-view="pet">网页桌宠</div>
       <div class="nav-item" data-view="backup">代码备份</div>
+      <div class="nav-item" data-view="update">检查更新</div>
     </nav>
 
     <main class="main">
@@ -704,6 +705,28 @@
           </label>
         </div>
 
+        <div class="board-row">
+          <div class="board-label">
+            <div class="name">弹性系数</div>
+            <div class="desc">撞到鼠标尾迹后的回弹强度，越小越快停</div>
+          </div>
+          <div class="alpha-ctl">
+            <input type="range" id="pet-bounce" class="alpha-slider" min="0.2" max="1" step="0.05" value="0.5">
+            <input type="number" id="pet-bounce-value" class="alpha-value" min="0.2" max="1" step="0.05" value="0.5">
+          </div>
+        </div>
+
+        <div class="board-row">
+          <div class="board-label">
+            <div class="name">抛掷力度</div>
+            <div class="desc">拖动后松手的初速度倍率，1 = 原始手感</div>
+          </div>
+          <div class="alpha-ctl">
+            <input type="range" id="pet-throw" class="alpha-slider" min="0.3" max="2" step="0.1" value="1">
+            <input type="number" id="pet-throw-value" class="alpha-value" min="0.3" max="2" step="0.1" value="1">
+          </div>
+        </div>
+
         <div class="pm-color-block">
           <div class="label">自定义图片</div>
           <div class="bg-btn-pair">
@@ -746,6 +769,21 @@
         <input type="file" id="backup-file-input" accept=".json,application/json,text/plain" style="display:none;">
       </section>
 
+      <!-- ============ 检查更新 ============ -->
+      <section class="view" id="view-update">
+        <h2 class="view-title">检查更新</h2>
+        <p class="view-sub">对比 GitHub Release 上的最新版本</p>
+
+        <div class="as-summary" id="update-current">当前版本：读取中…</div>
+        <div class="as-row">
+          <button class="as-btn as-primary" id="update-check">检测更新</button>
+          <button class="as-btn" id="update-open-release" style="display:none;">打开下载页</button>
+          <button class="as-btn" id="update-open-ext">打开扩展管理页</button>
+        </div>
+        <div class="as-status" id="update-status"></div>
+        <p class="tip">本扩展通过 GitHub Release 分发，Chrome 不会自动更新自托管的 crx。检测到新版后需自行下载并替换。</p>
+      </section>
+
     </main>
   </div>
 
@@ -762,5 +800,6 @@
   <script src="click-fx-panel.js"></script>
   <script src="pet-panel.js"></script>
   <script src="auto-save-panel.js"></script>
+  <script src="update-panel.js"></script>
 </body>
 </html>

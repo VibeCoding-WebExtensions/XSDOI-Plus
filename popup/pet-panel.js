@@ -1,8 +1,9 @@
 // 网页桌宠设置面板 - popup
 //
-// 控制 storage.sync 的 webPetEnabled（显隐）与 webPetCrop（裁剪参数），
+// 控制 storage.sync 的 webPetEnabled（显隐）、webPetCrop（裁剪参数）、
+// webPetBounce（弹性系数）、webPetThrow（抛掷力度），
 // storage.local 的 webPetImg（自定义图片 dataURL），供 content/web-pet.js 读取。
-// 开关与裁剪为草稿模式：界面调整不写 storage，点「保存配置」立即应用并持久化；
+// 开关 / 裁剪 / 两个系数为草稿模式：界面调整不写 storage，点「保存配置」立即应用并持久化；
 // 选择 / 清除图片仍立即生效。
 // ============================================================
 
@@ -12,11 +13,16 @@
   var ENABLE_KEY = 'webPetEnabled';
   var IMG_KEY = 'webPetImg';
   var CROP_KEY = 'webPetCrop';
+  var BOUNCE_KEY = 'webPetBounce';
+  var THROW_KEY = 'webPetThrow';
   var IMG_MAX_BYTES = 2 * 1024 * 1024;
   var DEFAULT_CROP = { scale: 2, cx: 0.5, cy: 0.5 };
   var SCALE_MIN = 1;
   var SCALE_MAX = 8;
   var MIN_R = 8; // 圆最小半径 px
+  // 弹性系数 = 恢复系数 e；抛掷力度 = 初速度倍率（范围与 content/web-pet.js 的 normalize 一致）
+  var BOUNCE_MIN = 0.2, BOUNCE_MAX = 1, BOUNCE_DEFAULT = 0.5;
+  var THROW_MIN = 0.3, THROW_MAX = 2, THROW_DEFAULT = 1;
 
   var enabledEl = document.getElementById('pet-enabled');
   var pickBtn = document.getElementById('pet-img-pick');
@@ -28,9 +34,17 @@
   var circle = document.getElementById('pet-crop-circle');
   var handle = document.getElementById('pet-crop-handle');
   var saveBtn = document.getElementById('pet-save');
+  var bounceEl = document.getElementById('pet-bounce');
+  var bounceValEl = document.getElementById('pet-bounce-value');
+  var throwEl = document.getElementById('pet-throw');
+  var throwValEl = document.getElementById('pet-throw-value');
 
   var currentCrop = Object.assign({}, DEFAULT_CROP); // 界面草稿值（保存时才应用）
   var savedCrop = Object.assign({}, DEFAULT_CROP);   // 已持久化值
+  var currentBounce = BOUNCE_DEFAULT;
+  var savedBounce = BOUNCE_DEFAULT;
+  var currentThrow = THROW_DEFAULT;
+  var savedThrow = THROW_DEFAULT;
   var savedEnabled = true;
   var hasImg = false;
 
@@ -41,7 +55,7 @@
 
   // ---------- 加载当前状态 ----------
   function load() {
-    chrome.storage.sync.get([ENABLE_KEY, CROP_KEY], function (sync) {
+    chrome.storage.sync.get([ENABLE_KEY, CROP_KEY, BOUNCE_KEY, THROW_KEY], function (sync) {
       enabledEl.checked = sync[ENABLE_KEY] !== false;
       if (sync[CROP_KEY] && typeof sync[CROP_KEY] === 'object') {
         var c = sync[CROP_KEY];
@@ -49,8 +63,13 @@
         if (typeof c.cx === 'number') currentCrop.cx = c.cx;
         if (typeof c.cy === 'number') currentCrop.cy = c.cy;
       }
+      currentBounce = clampNum(sync[BOUNCE_KEY], BOUNCE_MIN, BOUNCE_MAX, BOUNCE_DEFAULT);
+      currentThrow = clampNum(sync[THROW_KEY], THROW_MIN, THROW_MAX, THROW_DEFAULT);
       savedEnabled = enabledEl.checked;
       savedCrop = Object.assign({}, currentCrop);
+      savedBounce = currentBounce;
+      savedThrow = currentThrow;
+      syncCoefficientInputs();
       updateSaveState();
     });
     chrome.storage.local.get([IMG_KEY], function (loc) {
@@ -179,6 +198,48 @@
     }, 100);
   }
 
+  // ---------- 弹性 / 抛掷力度 ----------
+  function clampNum(v, min, max, dflt) {
+    var n = parseFloat(v);
+    if (isNaN(n)) return dflt;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  // 滑块与数字框同步到当前草稿值（不写 storage）
+  function syncCoefficientInputs() {
+    bounceEl.value = currentBounce;
+    bounceValEl.value = currentBounce.toFixed(2);
+    throwEl.value = currentThrow;
+    throwValEl.value = currentThrow.toFixed(1);
+  }
+
+  // 数字框：输入过程只改草稿、**不回写输入框**（逐字符 clamp 会把「0.」打断成「0.20」），
+  // 失焦 / 回车时才规整 —— 与板块美化的透明度数字框同一套约定
+  function bindCoefficient(slider, number, min, max, dflt, setter, digits) {
+    slider.addEventListener('input', function () {
+      var n = clampNum(slider.value, min, max, dflt);
+      setter(n);
+      number.value = n.toFixed(digits);
+      updateSaveState();
+    });
+    number.addEventListener('input', function () {
+      var raw = parseFloat(number.value);
+      if (isNaN(raw)) return; // 空 / 非法内容，等 change 规整
+      setter(clampNum(raw, min, max, dflt));
+      updateSaveState();
+    });
+    number.addEventListener('change', function () {
+      var n = clampNum(number.value, min, max, dflt);
+      setter(n);
+      slider.value = n;
+      number.value = n.toFixed(digits);
+      updateSaveState();
+    });
+  }
+
+  bindCoefficient(bounceEl, bounceValEl, BOUNCE_MIN, BOUNCE_MAX, BOUNCE_DEFAULT, function (v) { currentBounce = v; }, 2);
+  bindCoefficient(throwEl, throwValEl, THROW_MIN, THROW_MAX, THROW_DEFAULT, function (v) { currentThrow = v; }, 1);
+
   function round2(n) {
     return Math.round(n * 100) / 100;
   }
@@ -204,7 +265,9 @@
     var dirty = (enabledEl.checked !== savedEnabled) ||
       Math.abs(currentCrop.scale - savedCrop.scale) > 0.0001 ||
       Math.abs(currentCrop.cx - savedCrop.cx) > 0.0001 ||
-      Math.abs(currentCrop.cy - savedCrop.cy) > 0.0001;
+      Math.abs(currentCrop.cy - savedCrop.cy) > 0.0001 ||
+      Math.abs(currentBounce - savedBounce) > 0.0001 ||
+      Math.abs(currentThrow - savedThrow) > 0.0001;
     saveBtn.classList.toggle('dirty', dirty);
     saveBtn.classList.remove('saved');
   }
@@ -218,7 +281,12 @@
       cx: round2(currentCrop.cx),
       cy: round2(currentCrop.cy)
     };
-    chrome.storage.sync.set({ webPetEnabled: enabledEl.checked, webPetCrop: next }, function () {
+    chrome.storage.sync.set({
+      webPetEnabled: enabledEl.checked,
+      webPetCrop: next,
+      webPetBounce: round2(currentBounce),
+      webPetThrow: round2(currentThrow)
+    }, function () {
       if (chrome.runtime.lastError) {
         flashSaveBtn('save-error', '保存失败，请重试');
         return;
@@ -226,6 +294,8 @@
       savedEnabled = enabledEl.checked;
       savedCrop = next;
       currentCrop = Object.assign({}, next);
+      savedBounce = currentBounce;
+      savedThrow = currentThrow;
       updateSaveState();
       flashSaveBtn('saved', '已保存 ✓');
     });
