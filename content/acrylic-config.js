@@ -68,6 +68,7 @@
     // —— 竞赛排行榜 ——
     '.contest-rank-search',                  // 排行榜搜索框
     '.contest-rank-config',                  // 排行榜「榜单设置」按钮
+    '.contest-config',                       // 排行榜「比赛设置」按钮（popover 里是一排 el-switch）
 
     // —— 代码速打页 ——
     '.ct-lib',                               // 代码速打页卡片

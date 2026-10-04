@@ -935,14 +935,36 @@
       '  background-color: transparent !important;',
       '  border-color: rgba(255, 255, 255, 0.12) !important;',
       '}',
-      /* 竞赛排行榜「榜单设置」按钮 contest-rank-config：透明化 + 亚克力边框 */
-      '.contest-rank-config .el-button--default {',
+      /* 竞赛排行榜两个圆角按钮：contest-rank-config「榜单设置」/ contest-config「比赛设置」
+         （后者的 popover 里就是那排 el-switch）。站点对 .contest-config 只写了
+         {text-align:center}，按钮外观全是 Element 默认（亮 background:#fff、
+         暗 html.theme-dark .el-button{background:var(--surface-2)}）→ 这里透明化 + 亚克力边框。
+         ⚠️ 站点的 .el-button:hover / :focus 带背景与边框色但**没有 !important**，
+            会被下面这条 !important 压死 → 必须自己补一条更高特异性的 hover，
+            否则这两个按钮 hover 时一点反馈都没有（V4.5.x 之前就漏了）。 */
+      '.contest-rank-config .el-button--default,',
+      '.contest-config .el-button--default {',
       '  background-color: transparent !important;',
       '  border-color: rgba(255, 255, 255, 0.5) !important;',
       '}',
-      'html.theme-dark .contest-rank-config .el-button--default {',
+      '.contest-rank-config .el-button--default:hover,',
+      '.contest-rank-config .el-button--default:focus,',
+      '.contest-config .el-button--default:hover,',
+      '.contest-config .el-button--default:focus {',
+      '  background-color: rgba(255, 255, 255, 0.3) !important;',
+      '  border-color: rgba(255, 255, 255, 0.85) !important;',
+      '}',
+      'html.theme-dark .contest-rank-config .el-button--default,',
+      'html.theme-dark .contest-config .el-button--default {',
       '  background-color: transparent !important;',
       '  border-color: rgba(255, 255, 255, 0.12) !important;',
+      '}',
+      'html.theme-dark .contest-rank-config .el-button--default:hover,',
+      'html.theme-dark .contest-rank-config .el-button--default:focus,',
+      'html.theme-dark .contest-config .el-button--default:hover,',
+      'html.theme-dark .contest-config .el-button--default:focus {',
+      '  background-color: rgba(255, 255, 255, 0.16) !important;',
+      '  border-color: rgba(255, 255, 255, 0.32) !important;',
       '}',
       /* 学习路线图 rm-card（保留顶部彩色 accent 条，半透明背景 + 三边亚克力边框） */
       '.rm-card {',
