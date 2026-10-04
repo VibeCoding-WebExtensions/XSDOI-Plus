@@ -2,67 +2,70 @@
 
 新赛道 OI（xsdoi.com）一站式浏览器增强扩展（Manifest V3）。
 
-在 OJ 平台上做题、改代码、看结果时提供一系列增强能力：从 AC 庆祝动画替换、页面美化，到代码自动备份、题目一键复制为 Markdown 等。
+在 OJ 平台上做题、改代码、看结果时提供一系列增强能力：页面美化、AC 庆祝动画替换、题目一键复制为 Markdown、代码自动备份等。
 
-## 功能列表
+**最低浏览器版本：Chrome / Edge 102+**
 
-| 功能 | 说明 | 设置入口 |
+## 功能
+
+| 功能 | 做什么 | 在哪设置 |
 |---|---|---|
-| 图标替换 | 隐藏页面 Logo 或替换为自定义图片（URL / 上传） | popup「图标替换」 |
+| 图标替换 | 隐藏页面 Logo，或换成自己的图片（URL / 上传） | popup「图标替换」 |
 | AC 动画替换 | AC 时用自定义图片 / 视频 / 文件夹随机替换默认烟花 | popup「AC 动画」 |
-| 板块美化 | 玻璃外观三选一：**亚克力（毛玻璃）/ 液态玻璃 / 仅透明化**，亮/暗色自适应，可调透明度。亚克力 = 背景模糊（`backdrop-filter: blur(20px) saturate(180%)`）；液态玻璃**不做模糊**（背景保持清晰），靠「边缘折射 + 边缘高光 + 浮动阴影」营造玻璃质感：`::before` 折射层承载边缘白带（伪折射），开启实验性真折射后由 SVG `feDisplacementMap` 经 **`backdrop-filter`**（不是 `filter`，否则会连带拉伸卡片内的图标）做边缘挤压变形，中间不变形；`::after` 高光层做顶部亮弧 + 内侧亮线 + 底部外投影。伪元素按选择器逐项挂载（`pseudo()` 构建器），列表内**每个**元素都会生成玻璃层。**玻璃层压到内容之下**（`::before`/`::after` 用 `z-index:-2/-1`，配合父元素 `isolation:isolate` 收容），保证折射只作用于背景、不会把卡片自身文字卷进置换产生错位重影。**站点已定位的元素不被覆盖 `position`**（`#nav`/`.el-backtop` 为 `fixed`、下拉气泡为 `absolute`、`.ct-lib` 为 `sticky`，覆盖后会导致菜单点不动、回到顶部按钮不悬浮等）。**滑块（透明度等）的玻璃小球与进度条随模式联动**：亚克力 = 内部毛玻璃模糊、液态玻璃 = 内部折射（不开真折射时只做边缘高光）、仅透明化 = 无滤镜；小球被拖拽/悬停时放大 1.25×。题目列表表格（vxe-table）、竞赛排行榜搜索框与两个圆角按钮（`contest-rank-config`「榜单设置」/ `contest-config`「比赛设置」，均透明化 + 亚克力边框；站点 `.el-button:hover` 的背景与边框色**没有** `!important`，会被扩展的 `!important` 压死，故补了一条更高特异性的 hover，否则这两个按钮悬停时毫无反馈）、代码速打页卡片（ct-lib/ct-card/紫色 ct-hero）、首页打卡区（运势签 `fortune-seal`、倒计时卡 `countdown-card`（保留左侧 3px 状态色条）、打卡完成条 `checked-done`、冲刺徽标 `sprint-badge`）、公告置顶 chip（`ann-pin-chip`，hover 半透明品牌蓝）、打卡区「本周刷题」进度条（`pb-track` 玻璃槽 + `pb-fill` 玻璃液面，靠 alpha 差做出注水液位）、排名 chip（`rank-chip`）与难度标签（`reco-diff`）均 currentColor 描边跟随各自状态色、连续打卡 chip（`streak-chip`，站点那条是非 scoped + `!important`，扩展用 `html .streak-chip` 提升特异性并自行写玻璃底色，琥珀文字保留）、「今日推荐 / 最近提交」卡（`extra-card`，hover 提亮白边）、「今日打卡」按钮（`checkin-btn`，去品牌蓝改玻璃，文字色改继承以保证明暗两套主题都可读）同样应用玻璃背景；开关 `el-switch` 是个**有填充**的控件，改用中性描边（亮 `rgba(0,0,0,.12)` / 暗 `rgba(255,255,255,.22)`）——它底下的填充与站点默认边框同色，套「半透明白边」在亮色下与填充/卡片同色，等于没有边框；未选中态半透明、**选中态保留站点品牌色**（半透明底色收窄成 `.el-switch:not(.is-checked)`，否则 `!important` 会把品牌色一起压成灰色，开关开/关看不出区别） | popup「板块美化」 |
-| 字体颜色 | 自定义全局默认文字颜色（黑白字体）：亮色模式默认黑、暗色模式默认白，可选任意颜色；**侧边栏菜单文字同样跟随**（站点把每项颜色写在内联 `style` 上，扩展用 `#nav .el-menu-item:not(.is-active)` + `!important` 压过内联；激活项的品牌色保留不动）；暗色主题下用 `html.theme-dark.theme-dark` 提特异性，避免被站点同名 `html.theme-dark` 变量块（同特异性、且在样式表后方）覆盖而失效；不影响彩色字体与编辑器代码字体 | popup「字体颜色」 |
+| 板块美化 | 玻璃外观三选一（**亚克力**毛玻璃 / **液态玻璃** / **仅透明化**），亮暗色自适应，透明度可调 | popup「板块美化」 |
+| 字体颜色 | 自定义全局默认文字颜色，侧边栏菜单同步跟随 | popup「字体颜色」 |
 | 背景替换 | 页面背景换成图片 / gif / 视频 / 纯色 / 渐变，可配背景音乐 | popup「背景替换」 |
-| 题目 Markdown 复制 | 题目页一键复制为 Markdown（含 LaTeX 公式、示例） | 题目页内按钮 |
-| 自测结果复制 | 将自测结果（状态 / 编译 / 评测详情）复制为 Markdown | 自测结果区按钮 |
+| 题目 Markdown 复制 | 题目页一键复制为 Markdown（含 LaTeX 公式与示例） | 题目页内按钮 |
+| 自测结果复制 | 把自测结果（状态 / 编译 / 评测详情）复制为 Markdown | 自测结果区按钮 |
 | 暗色模式修复 | 修复 Markdown 内容区在暗色模式下的显示问题 | 自动生效 |
-| 代码自动备份 | 运行自测 / 提交评测时自动备份代码（OPFS 存储） | 编辑器「设置」弹层 + popup「代码备份」 |
+| 代码自动备份 | 运行自测 / 提交评测时自动备份代码，可导出 / 导入 / 清空 | 编辑器「设置」弹层 + popup「代码备份」 |
 | 代码语法检测 | 提交前检测代码语法 / 语义错误并高亮提示 | 自动生效 |
-| 编辑器字体 | 设置编辑器字体（预设 / 上传自定义字体），提交详情页代码块、代码速打页（/typing）同步适配；提交页代码块与代码速打页顶部栏均有字体入口按钮，直接显示当前所选字体 | 编辑器「设置」弹层 / 提交页代码块 / 代码速打页顶部栏 |
+| 编辑器字体 | 选预设或上传字体，提交详情页代码块与代码速打页同步适配 | 编辑器「设置」弹层 / 提交页代码块 / 代码速打页顶部栏 |
 | 文件 IO 复制 Cpp 格式 | 一键复制文件 IO 题的输入 / 输出文件名（Cpp 格式） | 题目「文件 IO」弹层 |
-| 打字特效（Powermode） | 编辑器打字时粒子动画 + combo 计数 | popup「打字特效」 |
-| 鼠标尾迹 | 光标彩色拖尾（圆点 / 带状） | popup「鼠标尾迹」 |
+| 打字特效（Powermode） | 编辑器打字时显示粒子动画与 combo 计数 | popup「打字特效」 |
+| 鼠标尾迹 | 光标跟随彩色拖尾（圆点 / 带状） | popup「鼠标尾迹」 |
 | 点击特效 | 鼠标左键点击时爆发粒子 / 图片 | popup「点击特效」 |
-| 网页桌宠 | 可拖动的圆球小宠物（**不含 AI 聊天**，2026-09-30 移除），贴底走动/蹦跳，边缘吸附，可放入自定义图片并在裁剪器中拖动/缩放圆形选区（重开面板选区正确还原）；显隐与裁剪点「保存配置」后立即应用，由 popup 控制显隐；全局注入，所有页面均显示；拖到空中松手后遵循抛物线惯性落地；与鼠标尾迹联动——飞行/下落时碰到圆点尾迹反弹，碰到带状尾迹根据速度方向反弹或滑行（贴底散步时不受尾迹影响）；**弹性系数**（0.2~1，即碰撞恢复系数 e，此前写死 `0.9 × 1.3 = 1.17 > 1`，撞一次反而多 17% 动能、越弹越高，现默认 0.5）与**抛掷力度**（0.3~2，拖动松手时的初速度倍率，1 = 原始手感）可在面板里调，改动随「保存配置」立即生效 | popup「网页桌宠」 |
-| 检查更新 | 对比 GitHub Release 上的最新版本（`api.github.com`），提示「已是最新 / 发现新版本 / 本地为开发版 / 检测失败」。**「打开发布页」按钮常驻**（指向 `github.com/<repo>/releases/latest` 这个指针链接，GitHub 会 302 到最新 tag 的 Release 页），因此检测失败或本地是开发版时也能直接进去下载。**自托管 crx 无法自动更新**（Chrome 只对商店上架的扩展走自动更新通道），所以只做检测与引导，替换需用户手动完成 | popup「检查更新」 |
+| 网页桌宠 | 页面上的圆球小宠物：可拖动、贴底散步、抛物线惯性、与鼠标尾迹碰撞反弹；**弹性系数**与**抛掷力度**可调；可放入自定义图片并用圆形裁剪器调整 | popup「网页桌宠」 |
+| 检查更新 | 对比 GitHub Release 上的最新版本，并给出下载页入口 | popup「检查更新」 |
 
 ## 安装
 
-**最低版本：Chrome / Edge 102+**。代码自动备份用到 OPFS（`navigator.storage.getDirectory()`），manifest 里已声明 `minimum_chrome_version: "102"`，浏览器版本不够时会直接给出提示，而不是只抛一句「无法加载背景脚本」。
-
-Chrome / Edge：
-
 1. 打开扩展管理页（`chrome://extensions` 或 `edge://extensions`）
 2. 开启右上角「开发者模式」
-3. 点击「加载已解压的扩展程序」，选择解压出来的 **`XSDOI-Plus` 文件夹**（就是 `manifest.json` 所在那一层）
-4. 打开 xsdoi.com 任意页面即可生效；点击工具栏扩展图标打开设置面板
+3. 点「加载已解压的扩展程序」，选择**解压出来的 `XSDOI-Plus` 文件夹**（就是 `manifest.json` 所在那一层）
+4. 打开 xsdoi.com 任意页面即可生效；点工具栏扩展图标打开设置面板
 
-获取源码的两种方式：
+获取源码：clone 本仓库，或从 [Releases](https://github.com/VibeCoding-WebExtensions/XSDOI-Plus/releases) 下载 `XSDOI-Plus-<版本>-source.zip`（顶层目录固定叫 `XSDOI-Plus/`）。
 
-- 直接 clone 本仓库，或去 [Releases](https://github.com/VibeCoding-WebExtensions/XSDOI-Plus/releases) 下载 `XSDOI-Plus-<版本>-source.zip`（CI 自动产出，顶层目录固定叫 `XSDOI-Plus/`，比 GitHub 自动生成的 `XSDOI-Plus-main-<短SHA>/` 好选）
-- ⚠️ **别把 `XSDOI-Plus.crx` 改名成 .zip 再解压**：crx 前面有 593 字节签名头，解压工具按 zip 中央目录里的绝对偏移定位，偏移少了 593 → 条目全部读错位，解出来的文件是坏的
-- ⚠️ **别用 ANSI/GBK 另存扩展里的 `.js`**：非 UTF-8 的扩展 JS 会被 Chrome / Edge **直接拒绝加载**，service worker 根本不启动，扩展卡片上只显示「无法加载背景脚本」，真实原因（"该文件采用的不是 UTF-8 编码"）藏在错误详情里。CI 每次发版都会校验全部 `.js`/`.json`/`.html`/`.css` 是合法 UTF-8
+## 更新
 
-更新已有版本：重新解压新版本、再次指向那个文件夹即可（自托管 crx 没有自动更新通道，popup 里的「检查更新」只做检测与引导）。
+自托管扩展没有自动更新通道，popup 里的「检查更新」只做检测与引导。更新时重新解压新版本、再指向那个文件夹即可。
 
 ## 项目结构
 
 ```
 XSDOI-Plus/
-├── manifest.json          MV3 配置：权限（含 api.github.com 主机权限，供检查更新）、15+ 个 content script 注入点
-├── constants.js           共享常量（AC / 背景 / 打字特效等默认配置与消息名）
-├── background.js          service worker：媒体 IndexedDB 中转 + OPFS 代码备份 + 消息分发
-├── idb.js                 IndexedDB 封装
-├── md-core.js             Markdown 转换纯函数（UMD，可单测）
-├── content/               注入页面的脚本（按功能拆分，见上表）
-│   └── acrylic-config.js  板块美化选择器配置：亚克力元素集中列表（加选择器即生效）
-├── popup/                 扩展设置面板（左侧菜单 + 右侧设置）
-├── assets/  fonts/  icons/ 静态资源
+├── manifest.json     MV3 配置：权限、content script 注入点
+├── background.js     service worker：媒体中转 + 代码备份 + 消息分发
+├── constants.js      共享常量
+├── idb.js            IndexedDB 封装
+├── md-core.js        Markdown 转换（UMD，可单测）
+├── content/          注入页面的脚本，一个功能一个文件
+├── popup/            设置面板（左侧菜单 + 右侧面板）
+├── assets/ fonts/ icons/
+└── docs/             实现细节与踩坑记录
 ```
 
-存储说明：
+## 文档
 
-- `storage.sync`：各功能配置 / 开关（popup 与 content script 直接共享）
-- IndexedDB（`ac-replacer-media` / `bg-replacer-media`）：AC 动画、背景的媒体 Blob（popup 直写，页面经 background 分片读取）
-- OPFS（`backups/`）：代码自动备份（文件名 `题目ID-时间戳-原因.cpp.backup`）
+README 只讲这个扩展能做什么。**怎么做的、为什么这么做、踩过哪些坑**都在 [`docs/`](docs/README.md)：
 
+- [常见问题](docs/常见问题.md) —— 导入失败、装了没效果、暗色失效、悬停没反应等
+- [架构与存储](docs/架构与存储.md) —— 目录职责、三层存储、为什么需要 service worker
+- [板块美化](docs/板块美化.md) —— 三种玻璃模式、选择器配置、压过站点样式的规律
+- [网页桌宠](docs/网页桌宠.md) —— 交互与物理参数
+- [构建与发布](docs/构建与发布.md) —— 版本号规则、CI 发版流程、分发禁忌
+
+## 许可
+
+MIT
