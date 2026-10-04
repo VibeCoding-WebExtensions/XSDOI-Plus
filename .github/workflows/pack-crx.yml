@@ -123,10 +123,11 @@ jobs:
           "$CHROME" --version || true
 
           # 从暂存目录打包（不是仓库工作区），docs/ 因此不进包。
-          # 产物落在「被包目录的父目录」，文件名取目录名 → XSDOI-Plus.crx
-          OUT_PARENT="$RUNNER_TEMP/out"
-          rm -rf "$OUT_PARENT"
-          mkdir -p "$OUT_PARENT"
+          # ⚠️ Chrome 把产物写在**被包目录的父目录**，文件名取被包目录名
+          #    → $RUNNER_TEMP/stage/XSDOI-Plus.crx（目录名必须叫 XSDOI-Plus）。
+          #    这里曾经误把 OUT_PARENT 指到别处，导致「打包没有产出 crx」。
+          OUT_PARENT="$(dirname "$STAGE_DIR")"
+          rm -f "$OUT_PARENT"/*.crx
 
           if command -v xvfb-run >/dev/null 2>&1; then
             xvfb-run -a "$CHROME" --pack-extension="$STAGE_DIR" \
