@@ -58,10 +58,61 @@ jobs:
           PY
           echo "path=$KEY" >> "$GITHUB_OUTPUT"
 
+      - name: 准备打包目录（剔除 docs 与点开头条目）
+        id: stage
+        run: |
+          set -euo pipefail
+          # 为什么需要暂存目录：Chrome 的打包器只会自动跳过「点开头」的条目，
+          # 而 docs/ 是给在 GitHub 上看源码的人读的，不该塞进 crx 和源码 zip。
+          # 所以先把「真正属于扩展的文件」拷到一个干净目录，crx 与源码 zip 都从它出 ——
+          # 顺带保证两个产物的内容完全一致。
+          STAGE_ROOT="$RUNNER_TEMP/stage"
+          STAGE="$STAGE_ROOT/XSDOI-Plus"   # 目录名决定产物文件名，必须叫 XSDOI-Plus
+          rm -rf "$STAGE_ROOT"
+          mkdir -p "$STAGE"
+          python3 - "$GITHUB_WORKSPACE" "$STAGE" <<'PY'
+          import os, shutil, sys
+
+          src, dst = sys.argv[1], sys.argv[2]
+          n = 0
+          for dirpath, dirnames, filenames in os.walk(src):
+              # 跳过点开头的目录（.git / .github）与 docs/
+              dirnames[:] = [d for d in dirnames if not d.startswith('.') and d != 'docs']
+              for f in filenames:
+                  if f.startswith('.'):
+                      continue
+                  full = os.path.join(dirpath, f)
+                  out = os.path.join(dst, os.path.relpath(full, src))
+                  os.makedirs(os.path.dirname(out), exist_ok=True)
+                  shutil.copy2(full, out)
+                  n += 1
+          print(f'暂存文件数：{n}')
+
+          must = ['manifest.json', 'background.js', 'constants.js', 'idb.js', 'popup/popup.html']
+          missing = [m for m in must if not os.path.exists(os.path.join(dst, m))]
+          if missing:
+              print('::error::暂存目录缺少必需文件：' + ', '.join(missing))
+              sys.exit(1)
+          print('必需文件齐全：' + '、'.join(m.split('/')[-1] for m in must))
+
+          leaked = []
+          for dirpath, _dirnames, filenames in os.walk(dst):
+              for f in filenames:
+                  rel = os.path.relpath(os.path.join(dirpath, f), dst).replace(os.sep, '/')
+                  if rel.startswith(('docs/', '.git', '.github')):
+                      leaked.append(rel)
+          if leaked:
+              print('::error::暂存目录混进了不该有的条目：' + ', '.join(leaked[:5]))
+              sys.exit(1)
+          print('暂存目录干净（无 docs/ 与点开头条目）')
+          PY
+          echo "dir=$STAGE" >> "$GITHUB_OUTPUT"
+
       - name: 用 Chrome 打包 crx
         id: pack
         env:
           KEY_PATH: ${{ steps.key.outputs.path }}
+          STAGE_DIR: ${{ steps.stage.outputs.dir }}
         run: |
           set -euo pipefail
           CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
@@ -71,18 +122,17 @@ jobs:
           fi
           "$CHROME" --version || true
 
-          # 产物落在「被包目录的父目录」，文件名取目录名，即 /home/runner/work/<repo>/XSDOI-Plus.crx
-          # （该目录不在仓库工作区内，不会被误提交）
-          OUT_PARENT="$(dirname "$GITHUB_WORKSPACE")"
-          rm -f "$OUT_PARENT"/*.crx
+          # 从暂存目录打包（不是仓库工作区），docs/ 因此不进包。
+          # 产物落在「被包目录的父目录」，文件名取目录名 → XSDOI-Plus.crx
+          OUT_PARENT="$RUNNER_TEMP/out"
+          rm -rf "$OUT_PARENT"
+          mkdir -p "$OUT_PARENT"
 
-          # Chrome 的打包器会自动跳过 .git / .github 这类点开头的条目，不必手工剔除
-          # （本地实测 crx 内 0 个 .git 条目，可直接把仓库根目录当扩展目录打包）
           if command -v xvfb-run >/dev/null 2>&1; then
-            xvfb-run -a "$CHROME" --pack-extension="$GITHUB_WORKSPACE" \
+            xvfb-run -a "$CHROME" --pack-extension="$STAGE_DIR" \
               --pack-extension-key="$KEY_PATH" --no-message-box
           else
-            "$CHROME" --pack-extension="$GITHUB_WORKSPACE" \
+            "$CHROME" --pack-extension="$STAGE_DIR" \
               --pack-extension-key="$KEY_PATH" --no-message-box
           fi
 
@@ -109,6 +159,7 @@ jobs:
         id: srczip
         env:
           WANT_VERSION: ${{ steps.ver.outputs.version }}
+          STAGE_DIR: ${{ steps.stage.outputs.dir }}
         run: |
           set -euo pipefail
           # 为什么必须单独发一份源码 zip：
@@ -119,27 +170,23 @@ jobs:
           #   2) GitHub 自动生成的顶层目录名带 commit 短 SHA
           #      （VibeCoding-WebExtensions-XSDOI-Plus-<sha>/），很容易选错层级。
           # 这里产出一个顶层目录固定叫 XSDOI-Plus 的干净 zip：解压后直接选它就行。
-          # 内容与 crx 对齐（Chrome 打包器会跳过点开头的条目，这里同样跳过）。
-          python3 - "$WANT_VERSION" <<'PY'
+          # 直接从暂存目录打包 → **内容与 crx 逐字节一致**（同样不含 docs/）。
+          python3 - "$WANT_VERSION" "$STAGE_DIR" <<'PY'
           import os, sys, zipfile
 
-          version = sys.argv[1]
-          root = os.environ['GITHUB_WORKSPACE']
+          version, stage = sys.argv[1], sys.argv[2]
           out = os.path.join(os.environ['RUNNER_TEMP'], f'XSDOI-Plus-{version}-source.zip')
-          n = skipped = 0
+          n = 0
 
           with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
-              for dirpath, dirnames, filenames in os.walk(root):
-                  dirnames[:] = [d for d in dirnames if not d.startswith('.')]
-                  for f in filenames:
-                      if f.startswith('.'):
-                          skipped += 1
-                          continue
+              for dirpath, dirnames, filenames in os.walk(stage):
+                  dirnames.sort()
+                  for f in sorted(filenames):
                       full = os.path.join(dirpath, f)
-                      rel = os.path.relpath(full, root).replace(os.sep, '/')
+                      rel = os.path.relpath(full, stage).replace(os.sep, '/')
                       z.write(full, 'XSDOI-Plus/' + rel)
                       n += 1
-          print(f'条目数：{n}（跳过点开头条目 {skipped} 个）')
+          print(f'条目数：{n}（与 crx 同一份暂存目录）')
 
           names = set(zipfile.ZipFile(out).namelist())
           must = ['XSDOI-Plus/manifest.json', 'XSDOI-Plus/background.js',
