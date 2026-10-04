@@ -105,6 +105,74 @@ jobs:
           # 这是唯一能证明 secret 没放错的硬证据 —— 放错会静默打出一个同名的**另一个扩展**。
           python3 .github/verify-crx.py "$CRX_PATH" "$WANT_VERSION"
 
+      - name: 打源码 zip（供「加载已解压的扩展程序」）
+        id: srczip
+        env:
+          WANT_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          # 为什么必须单独发一份源码 zip：
+          #   1) Release 原本只有 crx，而 **crx 不是 zip** —— 前面有 593 字节的签名头
+          #      （Cr24 + 版本 + 公钥）。把它改名成 .zip 再解压时，解压工具按中央目录里
+          #      记录的绝对偏移定位，偏移量少了 593 字节 → 条目全部读错位。
+          #      别人唯一的替代路径是去 main 分支点 Code → Download ZIP。
+          #   2) GitHub 自动生成的顶层目录名带 commit 短 SHA
+          #      （VibeCoding-WebExtensions-XSDOI-Plus-<sha>/），很容易选错层级。
+          # 这里产出一个顶层目录固定叫 XSDOI-Plus 的干净 zip：解压后直接选它就行。
+          # 内容与 crx 对齐（Chrome 打包器会跳过点开头的条目，这里同样跳过）。
+          python3 - "$WANT_VERSION" <<'PY'
+          import os, sys, zipfile
+
+          version = sys.argv[1]
+          root = os.environ['GITHUB_WORKSPACE']
+          out = os.path.join(os.environ['RUNNER_TEMP'], f'XSDOI-Plus-{version}-source.zip')
+          n = skipped = 0
+
+          with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+              for dirpath, dirnames, filenames in os.walk(root):
+                  dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+                  for f in filenames:
+                      if f.startswith('.'):
+                          skipped += 1
+                          continue
+                      full = os.path.join(dirpath, f)
+                      rel = os.path.relpath(full, root).replace(os.sep, '/')
+                      z.write(full, 'XSDOI-Plus/' + rel)
+                      n += 1
+          print(f'条目数：{n}（跳过点开头条目 {skipped} 个）')
+
+          names = set(zipfile.ZipFile(out).namelist())
+          must = ['XSDOI-Plus/manifest.json', 'XSDOI-Plus/background.js',
+                  'XSDOI-Plus/constants.js', 'XSDOI-Plus/idb.js',
+                  'XSDOI-Plus/popup/popup.html']
+          missing = [m for m in must if m not in names]
+          if missing:
+              print('::error::源码 zip 缺少必需文件：' + ', '.join(missing))
+              sys.exit(1)
+          print('必需文件齐全：' + '、'.join(m.split('/')[-1] for m in must))
+
+          # 每个 .js / .json / .html / .css 都必须是合法 UTF-8。
+          # 非 UTF-8 的扩展 JS 会被 Chrome / Edge **直接拒绝加载** →
+          # service worker 根本不启动 → 扩展卡片上只显示一句「无法加载背景脚本」，
+          # 真实原因（"该文件采用的不是 UTF-8 编码"）藏在错误详情里，极难定位。
+          bad = []
+          with zipfile.ZipFile(out) as z:
+              for name in z.namelist():
+                  if not name.endswith(('.js', '.json', '.html', '.css')):
+                      continue
+                  try:
+                      z.read(name).decode('utf-8')
+                  except UnicodeDecodeError:
+                      bad.append(name)
+          if bad:
+              print('::error::以下文件不是合法 UTF-8（会被浏览器拒绝加载）：' + ', '.join(bad))
+              sys.exit(1)
+          print('UTF-8 检查通过')
+          PY
+          ZIP="$RUNNER_TEMP/XSDOI-Plus-$WANT_VERSION-source.zip"
+          ls -la "$ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+
       - name: 发布 Release
         uses: softprops/action-gh-release@v3
         with:
@@ -117,9 +185,23 @@ jobs:
             由 GitHub Actions 自动打包（commit ${{ github.sha }}）。
             私钥取自仓库 secret `CRX_PRIVATE_KEY`，扩展 ID 与本地打包一致。
 
+            ## 怎么安装
+
+            **首次使用**（推荐）：
+            1. 下载 `XSDOI-Plus-${{ steps.ver.outputs.version }}-source.zip` 并解压
+            2. 打开 `chrome://extensions`（Edge 是 `edge://extensions`），开启「开发者模式」
+            3. 点「加载已解压的扩展程序」，选择解压出来的 **`XSDOI-Plus` 文件夹**（里面就是 `manifest.json` 那一层）
+
+            **更新已有版本**：重复上面第 1~3 步，重新指向新解压的文件夹即可。
+
+            ⚠️ `XSDOI-Plus.crx` 是给自动打包/校验用的产物，**不能**直接双击安装 ——
+            Chrome / Edge 只允许安装商店来源的 crx；自托管 crx 没有自动更新通道。
+
             ${{ github.event.head_commit.message }}
           target_commitish: ${{ github.sha }}
-          files: ${{ steps.pack.outputs.crx }}
+          files: |
+            ${{ steps.pack.outputs.crx }}
+            ${{ steps.srczip.outputs.zip }}
           fail_on_unmatched_files: true
           draft: false
           prerelease: false

@@ -28,12 +28,22 @@
 
 ## 安装
 
+**最低版本：Chrome / Edge 102+**。代码自动备份用到 OPFS（`navigator.storage.getDirectory()`），manifest 里已声明 `minimum_chrome_version: "102"`，浏览器版本不够时会直接给出提示，而不是只抛一句「无法加载背景脚本」。
+
 Chrome / Edge：
 
 1. 打开扩展管理页（`chrome://extensions` 或 `edge://extensions`）
 2. 开启右上角「开发者模式」
-3. 点击「加载已解压的扩展程序」，选择本仓库的 `XSDOI-Plus/` 目录
+3. 点击「加载已解压的扩展程序」，选择解压出来的 **`XSDOI-Plus` 文件夹**（就是 `manifest.json` 所在那一层）
 4. 打开 xsdoi.com 任意页面即可生效；点击工具栏扩展图标打开设置面板
+
+获取源码的两种方式：
+
+- 直接 clone 本仓库，或去 [Releases](https://github.com/VibeCoding-WebExtensions/XSDOI-Plus/releases) 下载 `XSDOI-Plus-<版本>-source.zip`（CI 自动产出，顶层目录固定叫 `XSDOI-Plus/`，比 GitHub 自动生成的 `XSDOI-Plus-main-<短SHA>/` 好选）
+- ⚠️ **别把 `XSDOI-Plus.crx` 改名成 .zip 再解压**：crx 前面有 593 字节签名头，解压工具按 zip 中央目录里的绝对偏移定位，偏移少了 593 → 条目全部读错位，解出来的文件是坏的
+- ⚠️ **别用 ANSI/GBK 另存扩展里的 `.js`**：非 UTF-8 的扩展 JS 会被 Chrome / Edge **直接拒绝加载**，service worker 根本不启动，扩展卡片上只显示「无法加载背景脚本」，真实原因（"该文件采用的不是 UTF-8 编码"）藏在错误详情里。CI 每次发版都会校验全部 `.js`/`.json`/`.html`/`.css` 是合法 UTF-8
+
+更新已有版本：重新解压新版本、再次指向那个文件夹即可（自托管 crx 没有自动更新通道，popup 里的「检查更新」只做检测与引导）。
 
 ## 项目结构
 
