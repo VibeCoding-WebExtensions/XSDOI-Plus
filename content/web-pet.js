@@ -101,6 +101,10 @@
   //    在 G=0.15 下单次弹跳高度 18²/(2×0.15) = 1080px，比一屏还高。
   var bounceCoef = 0.5;                  // storage.sync webPetBounce
   var throwCoef = 1.0;                   // storage.sync webPetThrow
+  var DAMPING_RATIO = 0.28;              // 果冻阻尼比 ζ（0~1，越小回弹越"晃"）
+  var SQUASH_REST = 0.0;                 // 形变静止偏移
+  var SQUASH_GAIN = 3.4;                 // 形变增益（撞击速度 → 压缩量）
+  var squash = 0, squashV = 0;           // 果冻形变状态：位移与速度
   var COLLISION_COOLDOWN = 6;            // 碰撞冷却帧数（避免反弹瞬移）
   var collisionCooldown = 0;             // 当前冷却计时器
 
@@ -190,7 +194,33 @@
   }
 
   function applyPos() {
-    pet.style.transform = 'translate(' + px + 'px,' + py + 'px)';
+    // 果冻形变：squash 量为二阶弹簧-阻尼系统的位移，遵循
+    //   ü = -ω²·u - 2ζω·u̇      (u = squash 偏移量, ζ = 阻尼比)
+    // 撞击瞬间把冲击速度「注入」形变速度 u̇，之后由弹簧拉回、阻尼耗散 → 果冻回弹。
+    // 体积近似守恒：横向按 1/√(1-u) 补偿，挤压时变胖、拉伸时变瘦。
+    var s = 1 - squash;                       // 纵向缩放
+    var guard = s > 0.05 ? s : 0.05;
+    var lateral = 1 / Math.sqrt(guard);       // 体积守恒
+    if (lateral > 2.2) lateral = 2.2;        // 别拉成一条线
+    pet.style.transform = 'translate(' + px + 'px,' + py + 'px) scale(' +
+      lateral.toFixed(4) + ',' + s.toFixed(4) + ')';
+  }
+
+  // ---------- 果冻形变积分器（每帧调用，dt 秒） ----------
+  var SQUASH_W = 15.0;   // ω：形变固有角频率，越大回弹越快
+  function stepSquash(dt) {
+    var k = SQUASH_W * SQUASH_W;
+    var c = 2 * DAMPING_RATIO * SQUASH_W;
+    squashV += (-k * (squash - SQUASH_REST) - c * squashV) * dt;
+    squash += squashV * dt;
+    // 限幅：极端连击下形变不能反号到「缩成一团」
+    if (squash > 0.55) { squash = 0.55; squashV = Math.min(squashV, 0); }
+    if (squash < -0.40) { squash = -0.40; squashV = Math.max(squashV, 0); }
+  }
+
+  // 撞击/抛掷时给形变注入速度：impact 为冲击强度（正数）
+  function pokeSquash(impact) {
+    squashV += impact * SQUASH_W * 0.055 * SQUASH_GAIN;
   }
 
   function clampToViewport() {
@@ -232,9 +262,12 @@
   }
 
   function step() {
+    // 果冻形变积分必须在最前面：下面有多个 early-return（拖动/等待/静止），
+    // 若放在其后，桌宠静止时形变会冻结住、回弹播一半卡住。
+    stepSquash(1 / 60);
     if (dragging) return;
     var now = Date.now();
-    if (now < waitUntil) return;
+    if (now < waitUntil) { applyPos(); return; }
     if (collisionCooldown > 0) collisionCooldown--;
     if (flying) {
       if (updateParabola()) return;
@@ -250,6 +283,7 @@
       pet.classList.add('xsdoi-pet-idle');
       waitUntil = now + 1500 + Math.random() * 2500;
       pickTarget();
+      applyPos();
       return;
     }
     var s = Math.min(WALK_STEP, dist);
@@ -338,6 +372,8 @@
     flyVx = Math.max(-tVxMax, Math.min(tVxMax, flyVx * throwCoef));
     vxFly = flyVx;
     vyFly = flyVy;
+    // 抛掷瞬间拉伸果冻（朝运动方向拉长）
+    pokeSquash(-Math.min(1.6, Math.abs(flyVx) * 0.10 + Math.abs(flyVy) * 0.06));
   }
 
   function updateParabola() {
@@ -355,6 +391,8 @@
     var ground = groundY();
     if (py >= ground) {
       py = ground;
+      // 落地：按落地速度注入果冻冲量（速度越大压得越扁）
+      pokeSquash(Math.min(2.2, Math.abs(vyFly) * 0.12));
       applyPos();
       flying = false;
       pet.classList.remove('xsdoi-pet-flying');
@@ -409,6 +447,7 @@
           vxFly = nx * 3;
           vyFly = ny * 3;
         }
+        pokeSquash(Math.min(1.8, speed * 0.10));
         pet.classList.add('xsdoi-pet-bounce');
         setTimeout(function() { pet.classList.remove('xsdoi-pet-bounce'); }, 300);
         collisionCooldown = COLLISION_COOLDOWN;
@@ -466,6 +505,7 @@
       vxFly = nx * 3;
       vyFly = ny * 3;
     }
+    pokeSquash(Math.min(1.8, newSpeed * 0.10));
 
     pet.classList.add('xsdoi-pet-bounce');
     setTimeout(function() { pet.classList.remove('xsdoi-pet-bounce'); }, 300);

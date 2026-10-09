@@ -1,11 +1,19 @@
 {
   "manifest_version": 3,
   "name": "XSDOI-Plus",
-  "version": "4.6.5",
+  "version": "4.7.0",
   "minimum_chrome_version": "102",
   "description": "新赛道 OI（xsdoi.com）一站式增强：图标替换、AC 动画替换（图片/视频/文件夹随机播放）、题目 Markdown 复制、自测结果复制、暗色模式修复、板块玻璃美化（亚克力毛玻璃 / 液态玻璃<SVG 边缘折射> / 仅透明化，可选实验性真折射）、页面背景替换、代码自动备份、代码语法检测、编辑器字体、文件IO复制Cpp格式、编辑器打字特效（Powermode）、鼠标尾迹（圆点/带状）、鼠标点击特效（粒子/图片）、网页桌宠（圆球+自定义图片，可拖动）、全局字体颜色（亮色默认黑/暗色默认白，可自定义）",
-  "permissions": ["storage", "unlimitedStorage", "clipboardWrite"],
-  "host_permissions": ["*://xsdoi.com/*", "*://*.xsdoi.com/*", "https://api.github.com/*"],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "*://xsdoi.com/*",
+    "*://*.xsdoi.com/*",
+    "https://api.github.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -24,100 +32,201 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["constants.js", "content/ac.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "constants.js",
+        "content/ac.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["constants.js", "content/bg.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "constants.js",
+        "content/bg.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["content/acrylic-config.js", "content/board-beautify.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/acrylic-config.js",
+        "content/board-beautify.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["*://xsdoi.com/*"],
-      "js": ["content/logo.js"],
+      "matches": [
+        "*://xsdoi.com/*"
+      ],
+      "js": [
+        "content/logo.js"
+      ],
       "run_at": "document_end"
     },
     {
-      "matches": ["*://*.xsdoi.com/*"],
-      "js": ["content/md-dark-fix.js"],
+      "matches": [
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/md-dark-fix.js"
+      ],
       "run_at": "document_end"
     },
     {
-      "matches": ["https://*.xsdoi.com/*"],
-      "js": ["md-core.js", "content/md-problem-copy.js"],
+      "matches": [
+        "https://*.xsdoi.com/*"
+      ],
+      "js": [
+        "md-core.js",
+        "content/md-problem-copy.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["content/md-error-copy.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/md-error-copy.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["content/auto-save-main.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/auto-save-main.js"
+      ],
       "run_at": "document_idle",
       "world": "MAIN"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["content/lint-main.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/lint-main.js"
+      ],
       "run_at": "document_idle",
       "world": "MAIN"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["content/auto-save.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/auto-save.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*"],
-      "js": ["content/cpp-file-io-copy.js"],
+      "matches": [
+        "*://xsdoi.com/*"
+      ],
+      "js": [
+        "content/cpp-file-io-copy.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["content/editor-font.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/editor-font.js"
+      ],
       "run_at": "document_end"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "css": ["content/powermode.css"],
-      "js": ["constants.js", "content/powermode.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "css": [
+        "content/powermode.css"
+      ],
+      "js": [
+        "constants.js",
+        "content/powermode.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "css": ["content/mouse-trail.css"],
-      "js": ["constants.js", "content/mouse-trail.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "css": [
+        "content/mouse-trail.css"
+      ],
+      "js": [
+        "constants.js",
+        "content/mouse-trail.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "css": ["content/click-fx.css"],
-      "js": ["constants.js", "content/click-fx.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "css": [
+        "content/click-fx.css"
+      ],
+      "js": [
+        "constants.js",
+        "content/click-fx.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["content/web-pet.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "content/web-pet.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"],
-      "js": ["constants.js", "content/font-color.js"],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ],
+      "js": [
+        "constants.js",
+        "content/font-color.js"
+      ],
       "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["assets/builtin-logo.png", "fonts/*.woff2"],
-      "matches": ["*://xsdoi.com/*", "*://*.xsdoi.com/*"]
+      "resources": [
+        "assets/builtin-logo.png",
+        "fonts/*.woff2"
+      ],
+      "matches": [
+        "*://xsdoi.com/*",
+        "*://*.xsdoi.com/*"
+      ]
     }
   ]
 }

@@ -64,27 +64,34 @@
   // 该滤镜注册在 <svg> 内，content script 可注入（CSP 只约束 JS 内联脚本，不拦 DOM 内 SVG）。
   // ============================================================
   var REFRACT_FILTER_ID = 'xsdoi-lg-refract';
-  /* 置换最大位移(px)。经验值：
-     - 4~8  ：边缘折射可感知，四角无撕裂伪影，图标不受影响 → 8 为最佳平衡
+  /* 置换最大位移(px)。对应 ∇n 的峰值梯度强度（中心 0 → 边缘满量 → ±scale/2）。
+     经验值：
+     - 4~8  ：边缘折射可感知，四角无撕裂伪影 → 8 为最佳平衡
      - ≥12  ：四角开始出现撕裂状（菱形）伪影
      撕裂成因：置换需要采样元素边界之外的像素，而那里没有「背景」可采。
      注意不要靠给折射层加负 inset 外扩来「补」边界 —— 在真实站点上大卡片会
-     互相重叠、整页发白（已实测踩过）。 */
+     互相重叠、整页发白（已实测踩过）。
+     ⚠️ scale 现在是「梯度强度」而非「折射率差」：真实公式 u' = u + h·∇n 里，
+     偏折量正比于厚度 h 与表面曲率。这里 h/曲率都折进了这个经验常数。 */
   var REFRACT_SCALE = 8;
 
-  // 位移图：两条渐变的叠加（截图语义即位移图本身）
+  // 位移图：两条【单调】渐变的叠加（中心 = 50% 灰 → 位移 0，边缘 → 满量）
+  // ⚠️ 必须单调，不能用「0 → 满 → 0」的夹心渐变：那会让**中心位移最大、边缘为零**，
+  //    与 ∇n「中心平坦(梯度0)、边缘曲率大」的物理正好相反（V4.6.6 实测修正）。
+  // ⚠️ 50% 灰必须精确落在通道 0x80 —— feDisplacementMap 的位移公式是
+  //    P' = P + scale * (C - 0.5)，故 C=0.5 才是真正的「零位移」。
   var DISP_MAP_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg">' +
       '<defs>' +
         '<linearGradient id="Rx" x1="0" y1="0" x2="1" y2="0">' +
           '<stop offset="0" stop-color="#000000"/>' +
-          '<stop offset="0.5" stop-color="#ff0000"/>' +
-          '<stop offset="1" stop-color="#000000"/>' +
+          '<stop offset="0.5" stop-color="#800000"/>' +
+          '<stop offset="1" stop-color="#ff0000"/>' +
         '</linearGradient>' +
         '<linearGradient id="Gy" x1="0" y1="0" x2="0" y2="1">' +
           '<stop offset="0" stop-color="#000000"/>' +
-          '<stop offset="0.5" stop-color="#00ff00"/>' +
-          '<stop offset="1" stop-color="#000000"/>' +
+          '<stop offset="0.5" stop-color="#008000"/>' +
+          '<stop offset="1" stop-color="#00ff00"/>' +
         '</linearGradient>' +
       '</defs>' +
       '<rect width="100%" height="100%" fill="#000000"/>' +
@@ -110,9 +117,10 @@
     return '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" ' +
       'style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">' +
         '<filter id="' + REFRACT_FILTER_ID + '" x="-10%" y="-10%" width="120%" height="120%" ' +
-          'filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">' +
+          'filterUnits="objectBoundingBox" primitiveUnits="objectBoundingBox" ' +
+          'color-interpolation-filters="sRGB">' +
           '<feImage id="' + DISP_MAP_ID + '" result="map" preserveAspectRatio="none" ' +
-            'x="0" y="0" width="100%" height="100%" href="' + DISP_MAP_URI + '"/>' +
+            'x="0" y="0" width="1" height="1" href="' + DISP_MAP_URI + '"/>' +
           '<feDisplacementMap in="SourceGraphic" in2="map" scale="__SCALE__" ' +
             'xChannelSelector="R" yChannelSelector="G"/>' +
         '</filter>' +
