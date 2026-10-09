@@ -53,32 +53,64 @@
   }
 
   // ============================================================
-  // 液态玻璃：边缘折射
+  // 液态玻璃：真折射（feDisplacementMap + feTurbulence）
   // ------------------------------------------------------------
-  // [V4.7.3 重大更正] 真折射（feDisplacementMap）在 Chrome 里做不到。
-  //   原方案：feImage 引用一张 data URI SVG 位移图（红/绿通道驱动 x/y 位移），
-  //   走 `backdrop-filter: url(#...)` 施加置换。
-  //   实测（本机真实 Chrome + 硬件 GPU，复杂条纹背景 + 4 块尺寸不同的玻璃板
-  //   同屏对照截图）结论：
-  //     A 固定 100x100 + viewBox  -> 板内变万花筒 / 细密菱形网格
-  //     B width=100% 无 viewBox    -> 同样万花筒
-  //     C width=100% + viewBox    -> 同样万花筒
-  //     D 只 blur 不位移           -> 正常，条纹连续贯穿
-  //   A/B/C 三种写法结果完全一致，说明与 SVG 怎么写无关：Chrome 在
-  //   backdrop-filter 里对外链 feImage 一律按图片「固有像素尺寸」平铺，
-  //   viewBox / preserveAspectRatio / primitiveUnits 全都改不掉。
-  //   于是位移图退化成铺满滤镜区域的纹理，玻璃板成了万花筒，且纹路周期
-  //   不随板尺寸变化（用户实测：整块大卡片里出现等间距重复的内容副本）。
-  //   这是滤镜原语层面的实现行为，无解 —— 只能放弃真折射。
+  // 数学依据：u' = u + h * n_xy
+  //   采样坐标偏移 = 玻璃厚度 h × 表面法线水平分量 n_xy。
+  //   在 SVG 滤镜里：feDisplacementMap 的位移 = scale * (C - 0.5)，
+  //   C 即位移场通道值 ⇒ R 通道驱 x 位移、G 通道驱 y 位移，scale 在数值上
+  //   等价于 h * |∇n| 的幅值。中心黑(C=0.5) = 零位移，正是「中心平坦」。
   //
-  //   现在改为纯 CSS：blur 保住「透出背后」的玻璃感，边缘折射带用 inset
-  //   box-shadow 表达。纯 CSS 天然只作用于元素自身区域，不可能平铺整页背景，
-  //   每块板只呈现自己身后那一片，与用户预期一致。
+  // ⚠️ 踩过的两条死路（本机真实 Chrome + 硬件 GPU 实测）：
+  //   ① feImage 引位移图（外链 data URI / 文档内元素 href="#id" 全都试过）
+  //      —— Chrome 在 backdrop-filter 里一律按图片固有像素尺寸**平铺**，
+  //      viewBox / preserveAspectRatio / primitiveUnits / filterUnits 全改不掉。
+  //      位移图退化成铺满滤镜区域的纹理 → 玻璃板变万花筒，且纹路周期不随板
+  //      尺寸变化（铁证）。外链、无尺寸、文档内引用三种写法结果完全一致。
+  //   ② 各向异性 baseFrequency（如 "0.9 0"）—— 该轴无变化，等于没位移。
+  //
+  // ✅ 唯一可行解：**feTurbulence 内联生成位移场 + primitiveUnits="userSpaceOnUse"**
+  //   关键在 primitiveUnits 必须是 userSpaceOnUse，让 baseFrequency 按**像素**
+  //   解释；若用 objectBoundingBox，频率会被乘以元素尺寸，导致位移只挤在板的一角。
+  //   湍流本身就是「表面法线场」的自然模型：玻璃表面并非完美规则曲面，
+  //   低频湍流给出的平滑起伏恰好对应 n_xy 的连续变化。
+  //   实测观感：baseFrequency≈0.0035、numOctaves=1、scale≈30 最接近真实
+  //   液态玻璃（大尺度平滑弯折、覆盖整块板、每块板各管自己身后那一片背景）。
   // ============================================================
 
-  // 注册 / 移除 SVG 滤镜宿主。
-  // V4.7.3 起不再生成任何滤镜节点（保留空实现以兼容旧调用点）。
+  var REFRACT_FILTER_ID = 'xsdoi-lg-refract';
   var FILTER_HOST_ID = 'xsdoi-lg-filter-host';
+
+  /* 折射强度 = 公式里的 h（玻璃厚度）。
+     scale 越大位移越大，但超过元素边缘会采到没有背景的像素而撕裂，
+     故 70 是实测「明显可见 + 不撕裂」的平衡点（30 太弱、90 已接近撕裂）。 */
+  var REFRACT_SCALE = 70;
+
+  function buildFilterSVG() {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" ' +
+      'style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">' +
+        '<filter id="' + REFRACT_FILTER_ID + '" x="0" y="0" width="1" height="1" ' +
+          'filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" ' +
+          'color-interpolation-filters="sRGB">' +
+          '<feTurbulence type="fractalNoise" baseFrequency="0.0028" numOctaves="1" ' +
+            'seed="4" result="map"/>' +
+          '<feDisplacementMap in="SourceGraphic" in2="map" scale="' + REFRACT_SCALE + '" ' +
+            'xChannelSelector="R" yChannelSelector="G"/>' +
+        '</filter>' +
+      '</svg>';
+  }
+
+  function ensureFilter() {
+    var host = document.getElementById(FILTER_HOST_ID);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = FILTER_HOST_ID;
+      host.setAttribute('aria-hidden', 'true');
+      host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;';
+      (document.body || document.documentElement).appendChild(host);
+    }
+    host.innerHTML = buildFilterSVG();
+  }
 
   function removeFilter() {
     var host = document.getElementById(FILTER_HOST_ID);
@@ -649,8 +681,8 @@
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
       ...(liquid
-        ? ['  -webkit-backdrop-filter: blur(1px) saturate(160%) !important;',
-           '  backdrop-filter: blur(1px) saturate(160%) !important;']
+        ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;',
+           '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;']
         : []),
       '  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14) !important;',
       '}',
@@ -663,8 +695,8 @@
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
       ...(liquid
-        ? ['  -webkit-backdrop-filter: blur(1px) saturate(160%) !important;',
-           '  backdrop-filter: blur(1px) saturate(160%) !important;']
+        ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;',
+           '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;']
         : []),
       '  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28) !important;',
       '}',
@@ -2044,17 +2076,21 @@
             既保留折射页面背景的效果，又完全不碰文字。见上方 z-index 注释。
        liquid 模式固有生成。 */
     if (liquid) {
-      /* V4.7.3：边缘折射带改为纯 CSS inset box-shadow。
-         曾用 feDisplacementMap 真折射，但实测（真实 Chrome + 硬件 GPU）
-         Chrome 会把外链 feImage 位移图按固有像素尺寸平铺，玻璃板直接变万花筒，
-         且纹路周期不随板尺寸变化 —— 详见文件头 V4.7.3 说明。
-         inset box-shadow 只在元素自身盒子内绘制，结构上不可能采样/平铺
-         元素背后的整页背景，因此每块板只折射自己身后那一片。*/
+      /* V4.7.4：真折射回来了 —— 走 feTurbulence 内联生成位移场。
+         u' = u + h * n_xy ：feDisplacementMap 用 R/G 通道驱 x/y 位移，
+         scale 即 h，湍流场即 n_xy（玻璃表面的连续起伏）。
+         ⚠️ 绝不能再用 feImage 引位移图 —— Chrome 会按图片固有尺寸平铺，
+            玻璃板变万花筒（V4.7.3 实测）。feTurbulence 是内联生成的，
+            按 userSpaceOnUse 逐像素求值，不存在平铺问题。
+         ⚠️ 仍保留 dropRefract：通栏 / fixed 元素的 backdrop 采样范围极广，
+            整页一起被湍流推挤会很吵；这些元素只留玻璃层 + 边缘高光。*/
       var refractSels = dropRefract(acrylicOnly);
       var fx = pseudo(refractSels, '::before');
       var fxDark = darkPseudo(refractSels, '::before');
       rules.push(
         fx,
+        '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
+        '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
         '  box-shadow:',
         '    inset 0 0 0 1px rgba(255, 255, 255, 0.55),',
         '    inset 0 1px 0 0 rgba(255, 255, 255, 0.85),',
@@ -2063,6 +2099,8 @@
         '    inset 0 0 30px 6px rgba(120, 170, 255, 0.14) !important;',
         '}',
         fxDark,
+        '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
+        '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
         '  box-shadow:',
         '    inset 0 0 0 1px rgba(255, 255, 255, 0.16),',
         '    inset 0 1px 0 0 rgba(255, 255, 255, 0.26),',
@@ -2077,10 +2115,9 @@
   }
 
   // ============================================================
-  // ============================================================
-  // V4.7.3：真折射（SVG feDisplacementMap）已整体移除 —— 实测 Chrome 会把
-  // 外链 feImage 位移图按固有像素尺寸平铺，玻璃板变万花筒。液态玻璃的折射感
-  // 现在完全由 buildCSS() 里的 inset box-shadow 边缘折射带承担。
+  // V4.7.4：真折射 = feTurbulence 内联位移场 + feDisplacementMap，
+  // 滤镜注册于 ensureFilter()。走 backdrop-filter 而非 filter —— filter 会
+  // 栅格化整个层叠上下文（含卡片内图标/文字），导致「图标被拉伸」。
   // ============================================================
 
   function apply() {
@@ -2103,8 +2140,12 @@
       s.textContent = css;
       (document.head || document.documentElement).appendChild(s);
     }
-    // V4.7.3：已无 SVG 滤镜节点，确保旧版本残留的宿主被清掉
-    removeFilter();
+    // 真折射：注册 / 更新 SVG 滤镜（关掉时移除，避免留下无用节点）
+    if (state.mode === 'liquid') {
+      ensureFilter();
+    } else {
+      removeFilter();
+    }
     applyLvBg(state.alpha);
   }
 
