@@ -12,11 +12,21 @@
   var MODES = ['none', 'acrylic', 'liquid'];
   var DEFAULT_MODE = 'none';    // 新用户默认不开启
   var DEFAULT_ALPHA = 0.55;
+  /* 圆角：0 = 直角方形；1 = 最大圆角（正方形时即 x²+y²=r² 的正圆）。
+     实现为 border-radius: calc(round * 50%) —— 百分比在两个轴分别解析，
+     故非正方形元素在 1 处得到「最大内切椭圆圆角」，这是 CSS 能做到的极限。 */
+  var DEFAULT_ROUND = 0.5;
 
-  var state = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA };
+  var state = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA, round: DEFAULT_ROUND };
 
   function sanitizeMode(v) {
     return MODES.indexOf(v) >= 0 ? v : DEFAULT_MODE;
+  }
+
+  function sanitizeRound(v) {
+    var r = parseFloat(v);
+    if (isNaN(r)) return DEFAULT_ROUND;
+    return Math.min(1, Math.max(0, r));
   }
 
   function sanitizeAlpha(v) {
@@ -53,54 +63,86 @@
   }
 
   // ============================================================
-  // 液态玻璃：真折射（feDisplacementMap + feTurbulence）
+  // 液态玻璃：真折射（确定性厚度函数）
   // ------------------------------------------------------------
-  // 数学依据：u' = u + h * n_xy
-  //   采样坐标偏移 = 玻璃厚度 h × 表面法线水平分量 n_xy。
-  //   在 SVG 滤镜里：feDisplacementMap 的位移 = scale * (C - 0.5)，
-  //   C 即位移场通道值 ⇒ R 通道驱 x 位移、G 通道驱 y 位移，scale 在数值上
-  //   等价于 h * |∇n| 的幅值。中心黑(C=0.5) = 零位移，正是「中心平坦」。
+  // 数学依据：u' = u + h · n_xy
+  //   位移 = 玻璃厚度 h × 表面法线水平分量。feDisplacementMap 的位移 = scale·(C-0.5)，
+  //   故 R 通道驱 x 位移、G 驱 y，scale 即 h 的量级，位移图就是 n_xy 场。
   //
-  // ⚠️ 踩过的两条死路（本机真实 Chrome + 硬件 GPU 实测）：
-  //   ① feImage 引位移图（外链 data URI / 文档内元素 href="#id" 全都试过）
-  //      —— Chrome 在 backdrop-filter 里一律按图片固有像素尺寸**平铺**，
-  //      viewBox / preserveAspectRatio / primitiveUnits / filterUnits 全改不掉。
-  //      位移图退化成铺满滤镜区域的纹理 → 玻璃板变万花筒，且纹路周期不随板
-  //      尺寸变化（铁证）。外链、无尺寸、文档内引用三种写法结果完全一致。
-  //   ② 各向异性 baseFrequency（如 "0.9 0"）—— 该轴无变化，等于没位移。
+  // 厚度函数 h(P)：以「到最近边缘的距离」d 为自变量（归一化坐标）
+  //     d = min(x, 1-x, y, 1-y)
+  //     h(d) = smoothstep(0, k, d)      k = 0.30（边缘折射带占半宽 30%）
+  //   位移 = ∇h ⇒ 中心平坦(∇h=0)零位移、边缘环带最大、最外缘回零（不撕裂）。
+  //   这就是「中间厚四周薄」的透镜模型：中心是平板不偏折，边缘是棱镜偏折。
+  //   折射率 n 是材料常数、不随位置变 —— 随位置变化的是厚度 h 及其梯度。
   //
-  // ✅ 唯一可行解：**feTurbulence 内联生成位移场 + primitiveUnits="userSpaceOnUse"**
-  //   关键在 primitiveUnits 必须是 userSpaceOnUse，让 baseFrequency 按**像素**
-  //   解释；若用 objectBoundingBox，频率会被乘以元素尺寸，导致位移只挤在板的一角。
-  //   湍流本身就是「表面法线场」的自然模型：玻璃表面并非完美规则曲面，
-  //   低频湍流给出的平滑起伏恰好对应 n_xy 的连续变化。
-  //   实测观感：baseFrequency≈0.0035、numOctaves=1、scale≈30 最接近真实
-  //   液态玻璃（大尺度平滑弯折、覆盖整块板、每块板各管自己身后那一片背景）。
+  // ⚠️ 三条踩过的死路（本机真实 Chrome + 硬件 GPU 实测）：
+  //   ① feImage + objectBoundingBox 引位移图 → **平铺**成万花筒（SVG/PNG 一样，
+  //      viewBox / preserveAspectRatio / filterUnits 全改不掉；铁证是纹路周期
+  //      不随元素尺寸变化）
+  //   ② feImage 文档内引用 href="#id" → 空图，等于无位移
+  //   ③ feTurbulence 内联场 → 能折射，但它是**视口坐标系的随机噪声**：
+  //      · 没有「中间厚四周薄」的确定性结构
+  //      · 元素滚动时在噪声场里"穿过" → 同一块玻璃的折射图案会变（非物理）
+  //   ✅ 正解：feImage 引 PNG + primitiveUnits="userSpaceOnUse" + 显式像素子区域
+  //      子区域 = 元素自身尺寸 ⇒ 位移图被**拉伸**（而非平铺）填满元素，
+  //      且绑定在元素本地坐标系 ⇒ 滚动/移动时折射图案稳定不变。
+  //      代价：每块玻璃要有独立的 <filter>（尺寸不同 ⇒ 子区域不同），
+  //      故 syncRefract() 按尺寸分桶动态生成，见下。
   // ============================================================
 
-  var REFRACT_FILTER_ID = 'xsdoi-lg-refract';
   var FILTER_HOST_ID = 'xsdoi-lg-filter-host';
+  var REFRACT_PREFIX = 'xsdoi-lg-f-';
+  var _refractIds = new WeakMap();   // el -> filter id，避免反复写 DOM
+  var _refractSig = '';              // 尺寸签名；未变则不重建滤镜宿主
+  var _refractSels = [];            // buildCSS 算出的折射选择器列表，供 apply 使用
 
-  /* 折射强度 = 公式里的 h（玻璃厚度）。
-     scale 越大位移越大，但超过元素边缘会采到没有背景的像素而撕裂，
-     故 70 是实测「明显可见 + 不撕裂」的平衡点（30 太弱、90 已接近撕裂）。 */
-  var REFRACT_SCALE = 70;
+  // 位移图：256x256 PNG（SDF 厚度场），量化后约 2.3KB
+  var REFRACT_MAP_URI = 'data:image/png;base64,' +
+    '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';
 
-  function buildFilterSVG() {
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" ' +
-      'style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">' +
-        '<filter id="' + REFRACT_FILTER_ID + '" x="0" y="0" width="1" height="1" ' +
-          'filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" ' +
-          'color-interpolation-filters="sRGB">' +
-          '<feTurbulence type="fractalNoise" baseFrequency="0.0028" numOctaves="1" ' +
-            'seed="4" result="map"/>' +
-          '<feDisplacementMap in="SourceGraphic" in2="map" scale="' + REFRACT_SCALE + '" ' +
-            'xChannelSelector="R" yChannelSelector="G"/>' +
-        '</filter>' +
-      '</svg>';
+  /* 折射强度 = 公式里 h 的量级。按元素最小边缩放，让大小玻璃观感一致；
+     上限 64：再大边缘会采到元素外没有背景的像素而撕裂。 */
+  function refractScale(w, h) {
+    var s = Math.min(w, h) * 0.30;
+    if (s < 14) s = 14;
+    if (s > 64) s = 64;
+    return Math.round(s);
   }
 
-  function ensureFilter() {
+  /* 单个滤镜：feImage 子区域 = 元素像素尺寸（必须 userSpaceOnUse，
+     否则回到「按固有尺寸平铺」的万花筒）。 */
+  function makeFilterSVG(id, w, h, scale) {
+    return '<filter id="' + id + '" x="0" y="0" width="1" height="1" ' +
+      'filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" ' +
+      'color-interpolation-filters="sRGB">' +
+      '<feImage result="map" preserveAspectRatio="none" x="0" y="0" ' +
+        'width="' + w + '" height="' + h + '" href="' + REFRACT_MAP_URI + '"/>' +
+      '<feDisplacementMap in="SourceGraphic" in2="map" scale="' + scale + '" ' +
+        'xChannelSelector="R" yChannelSelector="G"/>' +
+      '</filter>';
+  }
+
+  function ensureHost() {
     var host = document.getElementById(FILTER_HOST_ID);
     if (!host) {
       host = document.createElement('div');
@@ -109,15 +151,49 @@
       host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;';
       (document.body || document.documentElement).appendChild(host);
     }
-    host.innerHTML = buildFilterSVG();
+    return host;
+  }
+
+  /* 为每个玻璃元素准备专属滤镜，并把 filter id 通过 CSS 变量发给它的 ::before。
+     尺寸量化到 4px 分桶 —— 相邻尺寸的元素共用一枚滤镜，避免上百个 <filter>。 */
+  function syncRefract(sels) {
+    if (!sels || !sels.length) { removeFilter(); return; }
+    var els;
+    try { els = document.querySelectorAll(sels.join(',')); } catch (e) { return; }
+    var i, el, w, h, key, sig = [], defs = [], seen = {};
+    for (i = 0; i < els.length; i++) {
+      el = els[i];
+      w = Math.ceil(el.offsetWidth / 4) * 4;
+      h = Math.ceil(el.offsetHeight / 4) * 4;
+      if (w < 8 || h < 8) continue;
+      key = w + 'x' + h;
+      sig.push(key);
+      if (_refractIds.get(el) !== key) {
+        _refractIds.set(el, key);
+        el.style.setProperty('--xsdoi-lg-f', 'url(#' + REFRACT_PREFIX + key + ')');
+      }
+      if (!seen[key]) {
+        seen[key] = 1;
+        defs.push(makeFilterSVG(REFRACT_PREFIX + key, w, h, refractScale(w, h)));
+      }
+    }
+    sig = sig.join(',');
+    if (sig === _refractSig) return;   // 尺寸没变，不重建
+    _refractSig = sig;
+    if (!defs.length) { removeFilter(); return; }
+    ensureHost().innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" ' +
+      'style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">' +
+      '<defs>' + defs.join('') + '</defs></svg>';
   }
 
   function removeFilter() {
     var host = document.getElementById(FILTER_HOST_ID);
     if (host && host.parentNode) host.parentNode.removeChild(host);
+    _refractSig = '';
   }
 
-  function buildCSS(alpha, mode) {
+  function buildCSS(alpha, mode, round) {
     var a = alpha.toFixed(2);
     var liquid = mode === 'liquid';
     // 元素专属毛玻璃模糊（滑块/进度条玻璃棒、深色标签、AI 横幅）：仅 acrylic 毛玻璃模式生成
@@ -681,8 +757,8 @@
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
       ...(liquid
-        ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;',
-           '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;']
+        ? ['  -webkit-backdrop-filter: blur(1.2px) saturate(160%) !important;',
+           '  backdrop-filter: blur(1.2px) saturate(160%) !important;']
         : []),
       '  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14) !important;',
       '}',
@@ -695,8 +771,8 @@
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
       ...(liquid
-        ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;',
-           '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.2px) !important;']
+        ? ['  -webkit-backdrop-filter: blur(1.2px) saturate(160%) !important;',
+           '  backdrop-filter: blur(1.2px) saturate(160%) !important;']
         : []),
       '  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28) !important;',
       '}',
@@ -2075,22 +2151,46 @@
             （内容之下），backdrop 只剩「元素背景 + 页面背景」，
             既保留折射页面背景的效果，又完全不碰文字。见上方 z-index 注释。
        liquid 模式固有生成。 */
+    /* ===== 统一圆角（V4.7.5 新增）=====
+       ⚠️ 必须放在 buildCSS 末尾：前面有大量硬编码的 12px / 999px / 50% 圆角规则，
+       本规则靠源码顺序（同特异性下后者胜）统一覆盖。
+       排除通栏框架（#nav / .oj-topbar）—— 它们贴边，加圆角会露缝。 */
+    var rv = (typeof round === 'number' ? round : DEFAULT_ROUND).toFixed(3);
+    var roundList = acrylicOnly.filter(function (sel) {
+      return sel !== '#nav' && sel !== '.oj-topbar';
+    });
+    if (roundList.length) {
+      rules.push(
+        selLine(roundList),
+        '  border-radius: calc(' + rv + ' * 50%) !important;',
+        '}',
+        pseudo(roundList, '::before'),
+        '  border-radius: inherit !important;',
+        '}',
+        darkPseudo(roundList, '::before'),
+        '  border-radius: inherit !important;',
+        '}'
+      );
+    }
+
     if (liquid) {
-      /* V4.7.4：真折射回来了 —— 走 feTurbulence 内联生成位移场。
-         u' = u + h * n_xy ：feDisplacementMap 用 R/G 通道驱 x/y 位移，
-         scale 即 h，湍流场即 n_xy（玻璃表面的连续起伏）。
-         ⚠️ 绝不能再用 feImage 引位移图 —— Chrome 会按图片固有尺寸平铺，
-            玻璃板变万花筒（V4.7.3 实测）。feTurbulence 是内联生成的，
-            按 userSpaceOnUse 逐像素求值，不存在平铺问题。
-         ⚠️ 仍保留 dropRefract：通栏 / fixed 元素的 backdrop 采样范围极广，
-            整页一起被湍流推挤会很吵；这些元素只留玻璃层 + 边缘高光。*/
+      /* V4.7.5：确定性厚度函数的真折射（PNG 位移图 + per-element filter）。
+         u' = u + h·n_xy：feDisplacementMap 用 R/G 通道驱 x/y 位移，
+         scale 即 h 的量级，位移图就是表面法线场 n_xy。
+         位移图由 SDF 厚度函数生成（见文件头），中心平坦、边缘环带最大。
+         ⚠️ 滤镜是 per-element 的（子区域必须等于元素像素尺寸），
+            id 通过 CSS 变量 --xsdoi-lg-f 下发，由 syncRefract() 生成。
+         ⚠️ 保留 dropRefract：通栏 / fixed 元素的 backdrop 采样范围极广，
+            整页一起被推挤会很吵；这些元素只留玻璃层 + 边缘高光。*/
       var refractSels = dropRefract(acrylicOnly);
+      _refractSels = refractSels;
       var fx = pseudo(refractSels, '::before');
       var fxDark = darkPseudo(refractSels, '::before');
       rules.push(
         fx,
-        '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
-        '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
+        '  border-radius: inherit !important;',
+        '  -webkit-backdrop-filter: var(--xsdoi-lg-f, none) !important;',
+        '  backdrop-filter: var(--xsdoi-lg-f, none) !important;',
         '  box-shadow:',
         '    inset 0 0 0 1px rgba(255, 255, 255, 0.55),',
         '    inset 0 1px 0 0 rgba(255, 255, 255, 0.85),',
@@ -2099,8 +2199,9 @@
         '    inset 0 0 30px 6px rgba(120, 170, 255, 0.14) !important;',
         '}',
         fxDark,
-        '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
-        '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
+        '  border-radius: inherit !important;',
+        '  -webkit-backdrop-filter: var(--xsdoi-lg-f, none) !important;',
+        '  backdrop-filter: var(--xsdoi-lg-f, none) !important;',
         '  box-shadow:',
         '    inset 0 0 0 1px rgba(255, 255, 255, 0.16),',
         '    inset 0 1px 0 0 rgba(255, 255, 255, 0.26),',
@@ -2116,7 +2217,7 @@
 
   // ============================================================
   // V4.7.4：真折射 = feTurbulence 内联位移场 + feDisplacementMap，
-  // 滤镜注册于 ensureFilter()。走 backdrop-filter 而非 filter —— filter 会
+  // 滤镜由 syncRefract() 按尺寸生成。走 backdrop-filter 而非 filter —— filter 会
   // 栅格化整个层叠上下文（含卡片内图标/文字），导致「图标被拉伸」。
   // ============================================================
 
@@ -2131,7 +2232,7 @@
       return;
     }
 
-    var css = buildCSS(state.alpha, state.mode);
+    var css = buildCSS(state.alpha, state.mode, state.round);
     if (el) {
       el.textContent = css;
     } else {
@@ -2140,9 +2241,9 @@
       s.textContent = css;
       (document.head || document.documentElement).appendChild(s);
     }
-    // 真折射：注册 / 更新 SVG 滤镜（关掉时移除，避免留下无用节点）
+    // 真折射：按元素尺寸生成专属滤镜（关掉时移除，避免留下无用节点）
     if (state.mode === 'liquid') {
-      ensureFilter();
+      syncRefract(_refractSels);
     } else {
       removeFilter();
     }
@@ -2151,7 +2252,7 @@
 
   function loadAndApply() {
     try {
-      chrome.storage.sync.get(['mode', 'enabled', 'alpha'], function (data) {
+      chrome.storage.sync.get(['mode', 'enabled', 'alpha', 'round'], function (data) {
         var mode = data.mode;
         if (!mode) {
           // 迁移老配置：旧版只有 enabled（布尔），映射为 acrylic / none
@@ -2161,11 +2262,13 @@
         }
         state.mode = sanitizeMode(mode);
         state.alpha = sanitizeAlpha(data.alpha);
-          apply();
+        state.round = sanitizeRound(data.round);
+        apply();
       });
     } catch (e) {
       state.mode = DEFAULT_MODE;
       state.alpha = DEFAULT_ALPHA;
+      state.round = DEFAULT_ROUND;
       apply();
     }
   }
@@ -2180,8 +2283,31 @@
         state.mode = changes.enabled.newValue ? 'acrylic' : 'none';
       }
       if (changes.alpha) state.alpha = sanitizeAlpha(changes.alpha.newValue);
+      if (changes.round) state.round = sanitizeRound(changes.round.newValue);
       apply();
     });
+  } catch (e) { /* 忽略 */ }
+
+  /* 需要重新同步 per-element 滤镜的两种情况（feImage 子区域必须等于元素像素尺寸）：
+     ① 窗口尺寸变化 → 元素尺寸变
+     ② 站点是 Vue SPA，卡片会动态增删 → 新元素没有 --xsdoi-lg-f
+     两者都做 200~500ms 节流。syncRefract 内部有尺寸签名比较，
+     尺寸未变时只做一次 querySelectorAll 就返回，重复调用代价很低。 */
+  var _rsTimer = 0;
+  function resyncRefract(delay) {
+    if (_rsTimer) clearTimeout(_rsTimer);
+    _rsTimer = setTimeout(function () {
+      _rsTimer = 0;
+      if (state.mode === 'liquid') syncRefract(_refractSels);
+    }, delay);
+  }
+  try {
+    window.addEventListener('resize', function () { resyncRefract(200); }, { passive: true });
+  } catch (e) { /* 忽略 */ }
+
+  try {
+    var _mo = new MutationObserver(function () { resyncRefract(500); });
+    _mo.observe(document.documentElement, { childList: true, subtree: true });
   } catch (e) { /* 忽略 */ }
 
   // document_start 时立即按存储状态应用，减少首屏闪烁

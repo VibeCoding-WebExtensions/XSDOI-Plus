@@ -245,7 +245,6 @@
   }
 
   // ---------- 保存按钮（草稿模式：点击立即应用并持久化） ----------
-  var saveBtn = document.getElementById('pet-save');
   var flashTimer = null;
 
   // 保存按钮反馈：与其他面板一致，按钮内联显示状态，不弹窗

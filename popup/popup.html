@@ -209,6 +209,17 @@
           </div>
         </div>
 
+        <div class="board-row" style="margin-top:10px;">
+          <div class="board-label">
+            <div class="name">圆角</div>
+            <div class="desc">0 = 直角方形，1 = 最大圆角（正方形时为正圆）</div>
+          </div>
+          <div class="alpha-ctl">
+            <input type="range" id="board-round" class="alpha-slider" min="0" max="1" step="0.01" value="0.5">
+            <input type="number" id="board-round-value" class="alpha-value" min="0" max="1" step="0.01" value="0.5">
+          </div>
+        </div>
+
         <div class="save-row">
           <button id="board-save" class="save-btn">保存并应用</button>
         </div>
