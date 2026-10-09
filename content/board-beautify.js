@@ -53,98 +53,32 @@
   }
 
   // ============================================================
-  // 液态玻璃 SVG 滤镜：边缘折射（feDisplacementMap）
+  // 液态玻璃：边缘折射
   // ------------------------------------------------------------
-  // 参考苹果 WWDC25 Liquid Glass：折射只发生在「边缘」，中间完全不变形。
-  // 做法：用一张位移图（data URI SVG）做置换图源 ——
-  //   水平方向：左右边缘红通道强（中心黑），驱动 x 轴位移
-  //   垂直方向：上下边缘绿通道强（中心黑），驱动 y 轴位移
-  // 中心为纯黑 → 位移量 0 → 中间不扭曲；边缘红/绿 → 位移最大 → 边缘外扩折射。
-  // 该滤镜注册在 <svg> 内，content script 可注入（CSP 只约束 JS 内联脚本，不拦 DOM 内 SVG）。
+  // [V4.7.3 重大更正] 真折射（feDisplacementMap）在 Chrome 里做不到。
+  //   原方案：feImage 引用一张 data URI SVG 位移图（红/绿通道驱动 x/y 位移），
+  //   走 `backdrop-filter: url(#...)` 施加置换。
+  //   实测（本机真实 Chrome + 硬件 GPU，复杂条纹背景 + 4 块尺寸不同的玻璃板
+  //   同屏对照截图）结论：
+  //     A 固定 100x100 + viewBox  -> 板内变万花筒 / 细密菱形网格
+  //     B width=100% 无 viewBox    -> 同样万花筒
+  //     C width=100% + viewBox    -> 同样万花筒
+  //     D 只 blur 不位移           -> 正常，条纹连续贯穿
+  //   A/B/C 三种写法结果完全一致，说明与 SVG 怎么写无关：Chrome 在
+  //   backdrop-filter 里对外链 feImage 一律按图片「固有像素尺寸」平铺，
+  //   viewBox / preserveAspectRatio / primitiveUnits 全都改不掉。
+  //   于是位移图退化成铺满滤镜区域的纹理，玻璃板成了万花筒，且纹路周期
+  //   不随板尺寸变化（用户实测：整块大卡片里出现等间距重复的内容副本）。
+  //   这是滤镜原语层面的实现行为，无解 —— 只能放弃真折射。
+  //
+  //   现在改为纯 CSS：blur 保住「透出背后」的玻璃感，边缘折射带用 inset
+  //   box-shadow 表达。纯 CSS 天然只作用于元素自身区域，不可能平铺整页背景，
+  //   每块板只呈现自己身后那一片，与用户预期一致。
   // ============================================================
-  var REFRACT_FILTER_ID = 'xsdoi-lg-refract';
-  /* 置换最大位移(px)。对应 ∇n 的梯度强度：位移 = scale*(C-0.5)，C∈[0,1]
-     故实际位移范围是 ±scale/2（scale=8 → ±4px）。
-     ⚠️ 这个值必须保持较小：置换要采样元素边界之外的像素，那里没有背景可采，
-     位移越大边缘撕裂（菱形/缺角）越明显。用户实测 8 已出现整页扭曲，
-     故默认压到 4 —— 折射是「隐约透出背景形变」的暗示，不该抢视觉。
-     不要靠给折射层加负 inset 外扩来「补」边界：大卡片会互相重叠、整页发白。 */
-  var REFRACT_SCALE = 4;
 
-  // 位移图：两条【单调】渐变的叠加
-  // 设计意图：feDisplacementMap 的位移公式是 P' = P + scale * (C - 0.5)，
-  // 通道值 0.5 才是真零位移。渐变从 #000(0) 单调升到 #ff(1)，于是
-  // 边缘一侧位移最大、另一侧为零 —— 与 ∇n「中心平坦、边缘曲率大」一致。
-  // ⚠️ 中间档若要给「中心零位移」，必须精确用 0x80；
-  //    当前是单调渐变（无中间档回零），中心位移量取决于渐变中点的通道值。
-  // ⚠️ 内嵌 SVG 必须给 viewBox + 显式尺寸：否则渐变的用户坐标空间不确定，
-  //    配合 preserveAspectRatio="none" 会被拉伸成不可预期的形状。
-  var DISP_MAP_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" ' +
-      'preserveAspectRatio="none">' +
-      '<defs>' +
-        '<linearGradient id="Rx" x1="0" y1="0" x2="1" y2="0">' +
-          '<stop offset="0" stop-color="#000000"/>' +
-          '<stop offset="1" stop-color="#ff0000"/>' +
-        '</linearGradient>' +
-        '<linearGradient id="Gy" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0" stop-color="#000000"/>' +
-          '<stop offset="1" stop-color="#00ff00"/>' +
-        '</linearGradient>' +
-      '</defs>' +
-      '<rect width="100%" height="100%" fill="#000000"/>' +
-      '<rect width="100%" height="100%" fill="url(#Rx)" style="mix-blend-mode:screen"/>' +
-      '<rect width="100%" height="100%" fill="url(#Gy)" style="mix-blend-mode:screen"/>' +
-    '</svg>';
-
-  // 转 data URI（数据量极小，不做 base64，避免体积膨胀）
-  function toDataUri(svg) {
-    return 'data:image/svg+xml,' + encodeURIComponent(svg)
-      .replace(/%20/g, ' ')
-      .replace(/%3D/g, '=')
-      .replace(/%3A/g, ':')
-      .replace(/%2F/g, '/')
-      .replace(/%22/g, "'");
-  }
-
-  var DISP_MAP_URI = toDataUri(DISP_MAP_SVG);
-  var DISP_MAP_ID = 'xsdoi-lg-disp';
-
-  // 生成 <svg>：滤镜 + 位移图 <image>（用 <image> 承载 data URI，避免再开一个 data URI 引用）
-  /* ⚠️ primitiveUnits 必须显式写 objectBoundingBox（V4.7.1 修，用户实测整页被扭成漩涡）。
-       feImage 的 x/y/width/height 默认按 userSpaceOnUse 解析 —— 那里 `width="100%"`
-       指的是**视口**宽度，不是元素宽度。于是每个玻璃元素都在采样一张铺满视口、
-       与自身尺寸毫无关系的位移图，位移量随元素在页面上的位置剧烈变化，
-       整页背景被扭成漩涡（filter region 还是 120%，等于把扭曲铺到元素外）。
-       改成 objectBoundingBox + 无单位数 0/1，位移图才真正按元素自身尺寸归一化。 */
-  function buildFilterSVG() {
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" ' +
-      'style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">' +
-        '<filter id="' + REFRACT_FILTER_ID + '" x="0" y="0" width="1" height="1" ' +
-          'filterUnits="objectBoundingBox" primitiveUnits="objectBoundingBox" ' +
-          'color-interpolation-filters="sRGB">' +
-          '<feImage id="' + DISP_MAP_ID + '" result="map" preserveAspectRatio="none" ' +
-            'x="0" y="0" width="1" height="1" href="' + DISP_MAP_URI + '"/>' +
-          '<feDisplacementMap in="SourceGraphic" in2="map" scale="__SCALE__" ' +
-            'xChannelSelector="R" yChannelSelector="G"/>' +
-        '</filter>' +
-      '</svg>';
-  }
-
+  // 注册 / 移除 SVG 滤镜宿主。
+  // V4.7.3 起不再生成任何滤镜节点（保留空实现以兼容旧调用点）。
   var FILTER_HOST_ID = 'xsdoi-lg-filter-host';
-
-  // 注册 / 移除 SVG 滤镜（同一文档常驻一份）
-  function ensureFilter(scale) {
-    var host = document.getElementById(FILTER_HOST_ID);
-    if (!host) {
-      host = document.createElement('div');
-      host.id = FILTER_HOST_ID;
-      host.setAttribute('aria-hidden', 'true');
-      host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;';
-      (document.body || document.documentElement).appendChild(host);
-    }
-    host.innerHTML = buildFilterSVG().replace('__SCALE__', String(scale));
-  }
 
   function removeFilter() {
     var host = document.getElementById(FILTER_HOST_ID);
@@ -175,8 +109,8 @@
         // 滤镜 scale 烘在 SVG 里，这里通过给 svg 元素设置内联 scale 不可行，
         // 故改为对珠子叠加一层极小 blur 掩盖撕裂边缘（位移本身在 SVG 内已很小）。
         return [head,
-          '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.5px) !important;',
-          '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.5px) !important;',
+          '  -webkit-backdrop-filter: blur(1.5px) saturate(160%) !important;',
+          '  backdrop-filter: blur(1.5px) saturate(160%) !important;',
           '}'];
       }
       if (mode === 'acrylic') {
@@ -715,8 +649,8 @@
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
       ...(liquid
-        ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
-           '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;']
+        ? ['  -webkit-backdrop-filter: blur(1px) saturate(160%) !important;',
+           '  backdrop-filter: blur(1px) saturate(160%) !important;']
         : []),
       '  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14) !important;',
       '}',
@@ -729,8 +663,8 @@
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
       ...(liquid
-        ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
-           '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;']
+        ? ['  -webkit-backdrop-filter: blur(1px) saturate(160%) !important;',
+           '  backdrop-filter: blur(1px) saturate(160%) !important;']
         : []),
       '  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28) !important;',
       '}',
@@ -2110,21 +2044,31 @@
             既保留折射页面背景的效果，又完全不碰文字。见上方 z-index 注释。
        liquid 模式固有生成。 */
     if (liquid) {
-      /* ⚠️ 必须 dropRefract —— 用户实测全开会让整页背景被扭成漩涡。
-         头号嫌疑是 #nav：它是 position:fixed 的通栏侧边栏，而 fixed 元素的
-         backdrop-filter 采样范围是**整个视口**，一个通栏高的固定元素
-         就足以把整页背景整体置换掉。 */
+      /* V4.7.3：边缘折射带改为纯 CSS inset box-shadow。
+         曾用 feDisplacementMap 真折射，但实测（真实 Chrome + 硬件 GPU）
+         Chrome 会把外链 feImage 位移图按固有像素尺寸平铺，玻璃板直接变万花筒，
+         且纹路周期不随板尺寸变化 —— 详见文件头 V4.7.3 说明。
+         inset box-shadow 只在元素自身盒子内绘制，结构上不可能采样/平铺
+         元素背后的整页背景，因此每块板只折射自己身后那一片。*/
       var refractSels = dropRefract(acrylicOnly);
       var fx = pseudo(refractSels, '::before');
       var fxDark = darkPseudo(refractSels, '::before');
       rules.push(
         fx,
-        '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '");',
-        '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '");',
+        '  box-shadow:',
+        '    inset 0 0 0 1px rgba(255, 255, 255, 0.55),',
+        '    inset 0 1px 0 0 rgba(255, 255, 255, 0.85),',
+        '    inset 0 -1px 0 0 rgba(255, 255, 255, 0.35),',
+        '    inset 0 0 14px 2px rgba(255, 255, 255, 0.28),',
+        '    inset 0 0 30px 6px rgba(120, 170, 255, 0.14) !important;',
         '}',
         fxDark,
-        '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '");',
-        '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '");',
+        '  box-shadow:',
+        '    inset 0 0 0 1px rgba(255, 255, 255, 0.16),',
+        '    inset 0 1px 0 0 rgba(255, 255, 255, 0.26),',
+        '    inset 0 -1px 0 0 rgba(255, 255, 255, 0.10),',
+        '    inset 0 0 14px 2px rgba(255, 255, 255, 0.10),',
+        '    inset 0 0 30px 6px rgba(120, 170, 255, 0.08) !important;',
         '}'
       );
     }
@@ -2133,11 +2077,10 @@
   }
 
   // ============================================================
-  // 真折射已在 buildCSS() 中实现（SVG feDisplacementMap 边缘折射，
-  // 注册于 ensureFilter()），走 backdrop-filter 而非 filter —— 这是关键：
-  // filter 会栅格化层叠上下文内的内容（含图标），导致「图标被拉伸」；
-  // backdrop-filter 只采样元素背后内容，不影响上层内容。
-  // 旧版 canvas 边缘环位移方案已移除（只能折射 body 背景图、开销大）。
+  // ============================================================
+  // V4.7.3：真折射（SVG feDisplacementMap）已整体移除 —— 实测 Chrome 会把
+  // 外链 feImage 位移图按固有像素尺寸平铺，玻璃板变万花筒。液态玻璃的折射感
+  // 现在完全由 buildCSS() 里的 inset box-shadow 边缘折射带承担。
   // ============================================================
 
   function apply() {
@@ -2160,12 +2103,8 @@
       s.textContent = css;
       (document.head || document.documentElement).appendChild(s);
     }
-    // 真折射：注册 / 更新 SVG 置换滤镜（关掉时移除，避免留下无用节点）
-    if (state.mode === 'liquid') {
-      ensureFilter(REFRACT_SCALE);
-    } else {
-      removeFilter();
-    }
+    // V4.7.3：已无 SVG 滤镜节点，确保旧版本残留的宿主被清掉
+    removeFilter();
     applyLvBg(state.alpha);
   }
 
