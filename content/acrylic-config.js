@@ -140,5 +140,44 @@
     '.help-hero',                            // 关于页 hero（保留紫色 radial 光晕）
   ],
 
+  /*不参与真折射的元素（V4.7.1 加）
+     ⚠️ 用户实测：液态玻璃开启后**整页背景被扭成漩涡**、卡片文字全部变形。
+     成因（两条叠加）：
+       ① backdrop-filter 采样的是元素背后**整个页面**已渲染的内容，
+          包含其他玻璃元素折射后的结果 —— 多个玻璃元素各自再折射一次，
+          逐层累积放大。
+       ② 大尺寸容器（.hero 这类通栏主视觉）采样范围极广，
+          feDisplacementMap 要取元素边界外的像素，那里本就无背景可采，
+          必然出现大面积错位与撕裂。
+     故把「通栏/大容器 + 固定定位的框架元素」排除在折射之外 ——
+     它们只保留玻璃层与边缘高光（观感本来就好），不参与置换。
+     需要临时全开可把这里清空。 */
+  noRefract: [
+    '#nav',                // 左侧菜单栏（fixed + 通栏高）
+    '.oj-topbar',          // 顶部栏（fixed 通栏）
+    '.el-dialog',          // 弹窗（浮层，采样会穿透到整页）
+    '.el-message-box',     // 消息框（同上）
+    '.el-select-dropdown', // 下拉（浮层）
+    '.el-dropdown-menu',   // 下拉菜单（浮层）
+    '.el-backtop',         // 返回顶部（fixed 小浮层）
+    '.fix-to-bottom',      // 页脚横条（通栏）
+    '.hero',               // 首页主视觉（通栏大容器）
+    '.uh-hero',            // 训练营hero
+    '.th-hero',            // 主题hero
+    '.exam-hero',          // 考试页 hero
+    '.lv-banner',          // level 页 banner
+    '.shop-hero',          // 商店 hero
+    '.ws-hero',            // 工作区 hero
+    '.coach-hero',         // 教练页 hero
+    '.cross-banner',       // 跨页横幅
+    '.series-strip',       // 系列横条
+    '.el-table',           // 表格（可能很高）
+    '.vxe-table--render-default', // 题目列表表格（可能很高）
+    '.pathway-inner',      // 路径容器
+    '.description-body',   // 题目描述体（正文长文本，重影最刺眼）
+    '.el-tabs__nav-wrap',  // 标签导航条
+    '.el-tabs--border-card',
+  ],
+
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

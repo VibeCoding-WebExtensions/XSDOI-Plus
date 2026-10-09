@@ -206,6 +206,17 @@
     var acrylicList = acrylicOnly.concat(CFG.glassOnly || []);  // 玻璃层：完整亚克力 + 仅玻璃层
     var blurList = acrylicOnly.concat(CFG.blurOnly || []);      // 模糊：完整亚克力 + 仅模糊
 
+    /* 真折射的排除名单（V4.7.1）：通栏大容器 / fixed框架 / 浮层不参与置换。
+       用户实测全开会让整页背景被扭成漩涡 —— backdrop-filter 采样的是元素背后
+       **整个页面**已渲染的内容（含其他玻璃元素折射后的结果），多个玻璃元素
+       各自再折射一次会逐层累积放大；而大容器采样范围极广，取到边界外本就没有的
+       背景必然大面积错位。排除后这些元素只保留玻璃层 + 边缘高光。 */
+    var noRefract = CFG.noRefract || [];
+    function dropRefract(sels) {
+      if (!noRefract.length) return sels;
+      return sels.filter(function (s) { return noRefract.indexOf(s) < 0; });
+    }
+
     // 拼亮色选择器行：'.a, .b, ... {'
     function selLine(sels) { return sels.join(', ') + ' {'; }
     // 拼暗色选择器行：每个选择器加 html.theme-dark 前缀；
@@ -2099,8 +2110,13 @@
             既保留折射页面背景的效果，又完全不碰文字。见上方 z-index 注释。
        liquid 模式固有生成。 */
     if (liquid) {
-      var fx = pseudo(acrylicOnly, '::before');
-      var fxDark = darkPseudo(acrylicOnly, '::before');
+      /* ⚠️ 必须 dropRefract —— 用户实测全开会让整页背景被扭成漩涡。
+         头号嫌疑是 #nav：它是 position:fixed 的通栏侧边栏，而 fixed 元素的
+         backdrop-filter 采样范围是**整个视口**，一个通栏高的固定元素
+         就足以把整页背景整体置换掉。 */
+      var refractSels = dropRefract(acrylicOnly);
+      var fx = pseudo(refractSels, '::before');
+      var fxDark = darkPseudo(refractSels, '::before');
       rules.push(
         fx,
         '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '");',
