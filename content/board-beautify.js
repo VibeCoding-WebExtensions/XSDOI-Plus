@@ -3,7 +3,7 @@
 // 语义：透明度(alpha)三模式共有；玻璃效果三选一（mode，互斥且均含玻璃层半透明底色）：
 //   'none'    仅透明化：只保留玻璃层半透明底色，无模糊
 //   'acrylic' 毛玻璃  ：玻璃层 + backdrop-filter 模糊
-//   'liquid'  液态玻璃：不做模糊（背景保持清晰）+ 边缘高光 / 伪折射；可选实验性真折射(refract)
+//   'liquid'  液态玻璃：不做模糊（背景保持清晰）+ 边缘高光 + 真实折射（固有表现，无需开关）
 // 作用范围：见 content/acrylic-config.js 的选择器列表
 (function () {
   'use strict';
@@ -12,9 +12,8 @@
   var MODES = ['none', 'acrylic', 'liquid'];
   var DEFAULT_MODE = 'none';    // 新用户默认不开启
   var DEFAULT_ALPHA = 0.55;
-  var DEFAULT_REFRACT = false;  // 实验性真折射（仅 liquid 模式生效），默认关
 
-  var state = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA, refract: DEFAULT_REFRACT };
+  var state = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA };
 
   function sanitizeMode(v) {
     return MODES.indexOf(v) >= 0 ? v : DEFAULT_MODE;
@@ -64,33 +63,32 @@
   // 该滤镜注册在 <svg> 内，content script 可注入（CSP 只约束 JS 内联脚本，不拦 DOM 内 SVG）。
   // ============================================================
   var REFRACT_FILTER_ID = 'xsdoi-lg-refract';
-  /* 置换最大位移(px)。对应 ∇n 的峰值梯度强度（中心 0 → 边缘满量 → ±scale/2）。
-     经验值：
-     - 4~8  ：边缘折射可感知，四角无撕裂伪影 → 8 为最佳平衡
-     - ≥12  ：四角开始出现撕裂状（菱形）伪影
-     撕裂成因：置换需要采样元素边界之外的像素，而那里没有「背景」可采。
-     注意不要靠给折射层加负 inset 外扩来「补」边界 —— 在真实站点上大卡片会
-     互相重叠、整页发白（已实测踩过）。
-     ⚠️ scale 现在是「梯度强度」而非「折射率差」：真实公式 u' = u + h·∇n 里，
-     偏折量正比于厚度 h 与表面曲率。这里 h/曲率都折进了这个经验常数。 */
-  var REFRACT_SCALE = 8;
+  /* 置换最大位移(px)。对应 ∇n 的梯度强度：位移 = scale*(C-0.5)，C∈[0,1]
+     故实际位移范围是 ±scale/2（scale=8 → ±4px）。
+     ⚠️ 这个值必须保持较小：置换要采样元素边界之外的像素，那里没有背景可采，
+     位移越大边缘撕裂（菱形/缺角）越明显。用户实测 8 已出现整页扭曲，
+     故默认压到 4 —— 折射是「隐约透出背景形变」的暗示，不该抢视觉。
+     不要靠给折射层加负 inset 外扩来「补」边界：大卡片会互相重叠、整页发白。 */
+  var REFRACT_SCALE = 4;
 
-  // 位移图：两条【单调】渐变的叠加（中心 = 50% 灰 → 位移 0，边缘 → 满量）
-  // ⚠️ 必须单调，不能用「0 → 满 → 0」的夹心渐变：那会让**中心位移最大、边缘为零**，
-  //    与 ∇n「中心平坦(梯度0)、边缘曲率大」的物理正好相反（V4.6.6 实测修正）。
-  // ⚠️ 50% 灰必须精确落在通道 0x80 —— feDisplacementMap 的位移公式是
-  //    P' = P + scale * (C - 0.5)，故 C=0.5 才是真正的「零位移」。
+  // 位移图：两条【单调】渐变的叠加
+  // 设计意图：feDisplacementMap 的位移公式是 P' = P + scale * (C - 0.5)，
+  // 通道值 0.5 才是真零位移。渐变从 #000(0) 单调升到 #ff(1)，于是
+  // 边缘一侧位移最大、另一侧为零 —— 与 ∇n「中心平坦、边缘曲率大」一致。
+  // ⚠️ 中间档若要给「中心零位移」，必须精确用 0x80；
+  //    当前是单调渐变（无中间档回零），中心位移量取决于渐变中点的通道值。
+  // ⚠️ 内嵌 SVG 必须给 viewBox + 显式尺寸：否则渐变的用户坐标空间不确定，
+  //    配合 preserveAspectRatio="none" 会被拉伸成不可预期的形状。
   var DISP_MAP_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg">' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" ' +
+      'preserveAspectRatio="none">' +
       '<defs>' +
         '<linearGradient id="Rx" x1="0" y1="0" x2="1" y2="0">' +
           '<stop offset="0" stop-color="#000000"/>' +
-          '<stop offset="0.5" stop-color="#800000"/>' +
           '<stop offset="1" stop-color="#ff0000"/>' +
         '</linearGradient>' +
         '<linearGradient id="Gy" x1="0" y1="0" x2="0" y2="1">' +
           '<stop offset="0" stop-color="#000000"/>' +
-          '<stop offset="0.5" stop-color="#008000"/>' +
           '<stop offset="1" stop-color="#00ff00"/>' +
         '</linearGradient>' +
       '</defs>' +
@@ -113,10 +111,16 @@
   var DISP_MAP_ID = 'xsdoi-lg-disp';
 
   // 生成 <svg>：滤镜 + 位移图 <image>（用 <image> 承载 data URI，避免再开一个 data URI 引用）
+  /* ⚠️ primitiveUnits 必须显式写 objectBoundingBox（V4.7.1 修，用户实测整页被扭成漩涡）。
+       feImage 的 x/y/width/height 默认按 userSpaceOnUse 解析 —— 那里 `width="100%"`
+       指的是**视口**宽度，不是元素宽度。于是每个玻璃元素都在采样一张铺满视口、
+       与自身尺寸毫无关系的位移图，位移量随元素在页面上的位置剧烈变化，
+       整页背景被扭成漩涡（filter region 还是 120%，等于把扭曲铺到元素外）。
+       改成 objectBoundingBox + 无单位数 0/1，位移图才真正按元素自身尺寸归一化。 */
   function buildFilterSVG() {
     return '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" ' +
       'style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">' +
-        '<filter id="' + REFRACT_FILTER_ID + '" x="-10%" y="-10%" width="120%" height="120%" ' +
+        '<filter id="' + REFRACT_FILTER_ID + '" x="0" y="0" width="1" height="1" ' +
           'filterUnits="objectBoundingBox" primitiveUnits="objectBoundingBox" ' +
           'color-interpolation-filters="sRGB">' +
           '<feImage id="' + DISP_MAP_ID + '" result="map" preserveAspectRatio="none" ' +
@@ -147,7 +151,7 @@
     if (host && host.parentNode) host.parentNode.removeChild(host);
   }
 
-  function buildCSS(alpha, mode, refract) {
+  function buildCSS(alpha, mode) {
     var a = alpha.toFixed(2);
     var liquid = mode === 'liquid';
     // 元素专属毛玻璃模糊（滑块/进度条玻璃棒、深色标签、AI 横幅）：仅 acrylic 毛玻璃模式生成
@@ -160,16 +164,19 @@
     var BF5 = bf(5), BF8 = bf(8), BF12 = bf(12);
 
     /* 滑块小球的内部滤镜行（按模式决定），dark=true 生成暗色版。
-       亚克力 = 毛玻璃模糊；液态玻璃 = 不模糊（伪折射靠边缘高光表现），
-       开真折射时叠 SVG 边缘折射；仅透明化 = 显式清空滤镜。
-       useRefract=true 时强制生成折射行（仅在 liquid+refract 下调用）。 */
+       亚克力 = 毛玻璃模糊；液态玻璃 = 不模糊 + SVG 真实折射；仅透明化 = 显式清空滤镜。
+       useRefract=true 时生成折射行（liquid 模式固有调用）。
+       ⚠️ 珠子只有十几 px 宽，位移量相对尺寸过大 → 边缘撕裂/缺角，
+         故在折射之上叠一层 blur 抹掉锯齿。 */
     function beadFilterLine(dark, useRefract) {
       var sel = (dark ? 'html.theme-dark ' : 'html ') + '.el-slider .el-slider__button';
       var head = sel + ' {';
       if (useRefract) {
+        // 滤镜 scale 烘在 SVG 里，这里通过给 svg 元素设置内联 scale 不可行，
+        // 故改为对珠子叠加一层极小 blur 掩盖撕裂边缘（位移本身在 SVG 内已很小）。
         return [head,
-          '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1px) !important;',
-          '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1px) !important;',
+          '  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.5px) !important;',
+          '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") blur(1.5px) !important;',
           '}'];
       }
       if (mode === 'acrylic') {
@@ -683,8 +690,8 @@
       ...beadFilterLine(true),
       /* 液态玻璃 + 真折射：珠子走 SVG 边缘折射（与卡片同一枚滤镜）。
          放在上面之后以便覆盖，且带 !important 压过基础声明。 */
-      ...(liquid && refract ? beadFilterLine(false, true) : []),
-      ...(liquid && refract ? beadFilterLine(true, true) : []),
+      ...(liquid ? beadFilterLine(false, true) : []),
+      ...(liquid ? beadFilterLine(true, true) : []),
       /* 滑块进度条：玻璃棒。滤镜随模式变化（与小球一致）：
          亚克力=模糊 / 液态玻璃=折射（开真折射时）/ 仅透明化=无滤镜。
          用 BF5 只在 acrylic 生效，其余模式显式清空，避免切模式后残留。 */
@@ -696,7 +703,7 @@
       ...(mode !== 'acrylic'
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
-      ...(liquid && refract
+      ...(liquid
         ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
            '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;']
         : []),
@@ -710,7 +717,7 @@
       ...(mode !== 'acrylic'
         ? ['  -webkit-backdrop-filter: none !important;', '  backdrop-filter: none !important;']
         : []),
-      ...(liquid && refract
+      ...(liquid
         ? ['  -webkit-backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;',
            '  backdrop-filter: url("#' + REFRACT_FILTER_ID + '") !important;']
         : []),
@@ -1941,8 +1948,7 @@
        设计依据（苹果 WWDC25 Liquid Glass 三要素）：
          ① 边缘折射变形 —— 只在边缘，中间不变形  ② 边缘高光 + 浮动阴影  ③ 不模糊
        实现：把 ::before 伪元素作为「折射层」——
-         - 关折射(refract=off) 时：只有边缘白带渐变，仍明显强于「仅透明化」。
-         - 开折射(refract=on) 时：折射层走 backdrop-filter 引 SVG feDisplacementMap，
+         - 折射层走 backdrop-filter 引 SVG feDisplacementMap（liquid 固有），
            背景透过玻璃在边缘被透镜式挤压；中间位移量 0，保持清晰不变形。
        外层元素加「顶部亮弧（::after）+ 底部外投影」，营造浮起立体感。
        注意：伪元素需父元素有定位上下文，故同时给父元素加 position:relative
@@ -2091,8 +2097,8 @@
             feDisplacementMap 置换 → 重影。所以现在 ::before 压到 z-index:-2
             （内容之下），backdrop 只剩「元素背景 + 页面背景」，
             既保留折射页面背景的效果，又完全不碰文字。见上方 z-index 注释。
-       仅当 refract=on（实验性）时生成。 */
-    if (liquid && refract) {
+       liquid 模式固有生成。 */
+    if (liquid) {
       var fx = pseudo(acrylicOnly, '::before');
       var fxDark = darkPseudo(acrylicOnly, '::before');
       rules.push(
@@ -2129,7 +2135,7 @@
       return;
     }
 
-    var css = buildCSS(state.alpha, state.mode, state.refract);
+    var css = buildCSS(state.alpha, state.mode);
     if (el) {
       el.textContent = css;
     } else {
@@ -2139,7 +2145,7 @@
       (document.head || document.documentElement).appendChild(s);
     }
     // 真折射：注册 / 更新 SVG 置换滤镜（关掉时移除，避免留下无用节点）
-    if (state.mode === 'liquid' && state.refract) {
+    if (state.mode === 'liquid') {
       ensureFilter(REFRACT_SCALE);
     } else {
       removeFilter();
@@ -2149,7 +2155,7 @@
 
   function loadAndApply() {
     try {
-      chrome.storage.sync.get(['mode', 'enabled', 'alpha', 'refract'], function (data) {
+      chrome.storage.sync.get(['mode', 'enabled', 'alpha'], function (data) {
         var mode = data.mode;
         if (!mode) {
           // 迁移老配置：旧版只有 enabled（布尔），映射为 acrylic / none
@@ -2159,13 +2165,11 @@
         }
         state.mode = sanitizeMode(mode);
         state.alpha = sanitizeAlpha(data.alpha);
-        state.refract = !!data.refract;
-        apply();
+          apply();
       });
     } catch (e) {
       state.mode = DEFAULT_MODE;
       state.alpha = DEFAULT_ALPHA;
-      state.refract = DEFAULT_REFRACT;
       apply();
     }
   }
@@ -2180,7 +2184,6 @@
         state.mode = changes.enabled.newValue ? 'acrylic' : 'none';
       }
       if (changes.alpha) state.alpha = sanitizeAlpha(changes.alpha.newValue);
-      if (changes.refract) state.refract = !!changes.refract.newValue;
       apply();
     });
   } catch (e) { /* 忽略 */ }

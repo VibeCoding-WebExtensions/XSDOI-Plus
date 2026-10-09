@@ -1,7 +1,7 @@
 // ============================================================
 // 板块美化面板逻辑
 // 玻璃效果三选一（互斥）：acrylic 亚克力(毛玻璃) / liquid 液态玻璃 / none 仅透明化
-// + 透明度滑块（三模式共有）+ 实验性真折射开关（仅液态玻璃显示）
+// + 透明度滑块（三模式共有）
 // 兼容迁移：旧版只有 enabled 布尔 → true 映射 acrylic、false 映射 none
 // ============================================================
 (function () {
@@ -9,18 +9,17 @@
 
   var DEFAULT_MODE = 'none';
   var DEFAULT_ALPHA = 0.55;
-  var DEFAULT_REFRACT = false;
   var MODES = ['none', 'acrylic', 'liquid'];
 
   var MODE_TIPS = {
     none: '仅透明化：卡片半透明透出背景，不做模糊。',
     acrylic: '亚克力（毛玻璃）：半透明 + 背景模糊，经典毛玻璃质感。',
-    liquid: '液态玻璃：背景保持清晰、不模糊，靠边缘高光与折射营造玻璃质感；可另开下方实验性真折射。'
+    liquid: '液态玻璃：背景保持清晰、不模糊，边缘高光 + 真实折射营造玻璃质感。'
   };
 
   // saved = 已持久化到 storage 的值；draft = 当前界面正在编辑的值
-  var saved = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA, refract: DEFAULT_REFRACT };
-  var draft = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA, refract: DEFAULT_REFRACT };
+  var saved = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA };
+  var draft = { mode: DEFAULT_MODE, alpha: DEFAULT_ALPHA };
 
   function clamp(v) {
     v = parseFloat(v);
@@ -36,8 +35,6 @@
   var modeTip = document.getElementById('board-mode-tip');
   var alpha = document.getElementById('board-alpha');
   var alphaValue = document.getElementById('board-alpha-value');
-  var refractRow = document.getElementById('board-refract-row');
-  var refract = document.getElementById('board-refract');
   var saveBtn = document.getElementById('board-save');
 
   // 把 draft 同步到界面控件
@@ -51,9 +48,6 @@
     if (modeTip) modeTip.textContent = MODE_TIPS[draft.mode] || '';
     if (alpha) alpha.value = draft.alpha;
     if (alphaValue) alphaValue.value = draft.alpha.toFixed(2);
-    if (refract) refract.checked = draft.refract;
-    // 实验性真折射仅在液态玻璃下可选
-    if (refractRow) refractRow.style.display = draft.mode === 'liquid' ? '' : 'none';
   }
 
   // 判断 draft 与 saved 是否有差异，据此高亮「保存」按钮
@@ -61,7 +55,7 @@
     if (!saveBtn) return;
     var dirty = (draft.mode !== saved.mode) ||
                 (Math.abs(draft.alpha - saved.alpha) > 0.0001) ||
-                (draft.refract !== saved.refract);
+
     saveBtn.classList.toggle('dirty', dirty);
     saveBtn.classList.remove('saved');
   }
@@ -80,7 +74,7 @@
   // 读取已保存配置，填充草稿与界面（含旧版 enabled 迁移）
   function load() {
     try {
-      chrome.storage.sync.get(['mode', 'enabled', 'alpha', 'refract'], function (data) {
+      chrome.storage.sync.get(['mode', 'enabled', 'alpha'], function (data) {
         var mode = data.mode;
         if (!mode) {
           mode = (typeof data.enabled === 'boolean')
@@ -89,10 +83,8 @@
         }
         saved.mode = sanitizeMode(mode);
         saved.alpha = clamp(data.alpha);
-        saved.refract = !!data.refract;
         draft.mode = saved.mode;
         draft.alpha = saved.alpha;
-        draft.refract = saved.refract;
         syncUI();
         updateSaveState();
       });
@@ -105,7 +97,7 @@
   // 保存并应用：一次性写入 storage（content script 监听 onChanged 自动应用）
   function save() {
     try {
-      chrome.storage.sync.set({ mode: draft.mode, alpha: draft.alpha, refract: draft.refract }, function () {
+      chrome.storage.sync.set({ mode: draft.mode, alpha: draft.alpha }, function () {
         if (chrome.runtime.lastError) {
           if (saveBtn) {
             saveBtn.classList.remove('dirty');
@@ -121,7 +113,6 @@
         }
         saved.mode = draft.mode;
         saved.alpha = draft.alpha;
-        saved.refract = draft.refract;
         flashSaved();
       });
     } catch (e) { /* 忽略 */ }
@@ -163,14 +154,6 @@
       draft.alpha = v;
       alpha.value = v;
       alphaValue.value = v.toFixed(2);
-      updateSaveState();
-    });
-  }
-
-  // ===== 实验性真折射开关：只改草稿 =====
-  if (refract) {
-    refract.addEventListener('change', function () {
-      draft.refract = refract.checked;
       updateSaveState();
     });
   }
