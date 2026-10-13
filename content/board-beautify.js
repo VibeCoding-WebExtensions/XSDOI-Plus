@@ -2399,6 +2399,17 @@
       rules.push(
         fx,
         '  border-radius: inherit !important;',
+        /* ⚠️ V4.7.8 修「未折射文字与折射文字同时显示」：
+           玻璃底色必须放在折射层 ::before 上，不能放在元素自身的 background-color。
+           层叠顺序里负 z-index 画在元素背景**之后**，若底色在元素身上，
+           ::before 又完全透明，则板内会同时出现
+             (a) ::before 的 backdrop-filter 输出（折射版）
+             (b) 被元素半透明底色盖淡的原始内容（未折射版）
+           两者叠加 = 重影。把底色挪到 ::before 后，::before 成为不透明层，
+           只呈现「折射后的 backdrop + 玻璃色」，原始内容被它挡住。
+           注意 background-color 会画在 background-image（边缘白带渐变）**之下**，
+           两者共存不冲突。*/
+        '  background-color: rgba(255, 255, 255, ' + a + ') !important;',
         '  -webkit-backdrop-filter: var(--xsdoi-lg-f, none) !important;',
         '  backdrop-filter: var(--xsdoi-lg-f, none) !important;',
         '  box-shadow:',
@@ -2410,6 +2421,7 @@
         '}',
         fxDark,
         '  border-radius: inherit !important;',
+        '  background-color: rgba(23, 26, 36, ' + a + ') !important;',
         '  -webkit-backdrop-filter: var(--xsdoi-lg-f, none) !important;',
         '  backdrop-filter: var(--xsdoi-lg-f, none) !important;',
         '  box-shadow:',
@@ -2418,6 +2430,15 @@
         '    inset 0 -1px 0 0 rgba(255, 255, 255, 0.10),',
         '    inset 0 0 14px 2px rgba(255, 255, 255, 0.10),',
         '    inset 0 0 30px 6px rgba(120, 170, 255, 0.08) !important;',
+        '}',
+        /* 元素自身底色让位给 ::before —— 否则两层半透明底色叠加
+           （不透明度变成 1-(1-a)^2，a=0.55 时 0.80，玻璃会糊成一片），
+           且原内容仍会从元素底色那层透出来。*/
+        selLine(refractSels),
+        '  background-color: transparent !important;',
+        '}',
+        darkSelLine(refractSels),
+        '  background-color: transparent !important;',
         '}'
       );
     }
