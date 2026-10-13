@@ -96,6 +96,7 @@
   var _refractIds = new WeakMap();   // el -> filter id，避免反复写 DOM
   var _refractSig = '';              // 尺寸签名；未变则不重建滤镜宿主
   var _refractSels = [];            // buildCSS 算出的折射选择器列表，供 apply 使用
+  var _roundSels = [];               // 圆角作用的选择器列表（比折射列表宽，见 buildCSS）
 
   // 位移图：256x256 PNG（SDF 厚度场），量化后约 2.3KB
   var REFRACT_MAP_URI = 'data:image/png;base64,' +
@@ -154,31 +155,47 @@
     return host;
   }
 
-  /* 为每个玻璃元素准备专属滤镜，并把 filter id 通过 CSS 变量发给它的 ::before。
-     尺寸量化到 4px 分桶 —— 相邻尺寸的元素共用一枚滤镜，避免上百个 <filter>。 */
+  /* 为每个玻璃元素下发两个 CSS 变量（都依赖元素自身尺寸，故必须 per-element）：
+       --xsdoi-lg-f      折射滤镜 id（仅 liquid 模式）
+       --xsdoi-lg-radius 圆角半径（**像素**，非百分比）
+     尺寸量化到 4px 分桶 —— 相邻尺寸的元素共用一枚滤镜，避免上百个 <filter>。
+
+     ⚠️ 圆角为什么必须用 JS 下发而不是 CSS：
+        border-radius 的百分比在两个轴**分别**按宽高解析，`calc(round*50%)`
+        在长方形上会得到椭圆（沿长边被拉长）。要「正方形时那样的各向同性圆」，
+        半径必须是长度单位 = min(w,h)/2 * round —— 而 CSS 拿不到元素尺寸，
+        只能由 JS 测出来写成 px。 */
   function syncRefract(sels) {
     if (!sels || !sels.length) { removeFilter(); return; }
     var els;
     try { els = document.querySelectorAll(sels.join(',')); } catch (e) { return; }
-    var i, el, w, h, key, sig = [], defs = [], seen = {};
+    var i, el, w, h, key, radius, sig = [], defs = [], seen = {};
+    var liquid = state.mode === 'liquid';
+    var round = state.round;
     for (i = 0; i < els.length; i++) {
       el = els[i];
       w = Math.ceil(el.offsetWidth / 4) * 4;
       h = Math.ceil(el.offsetHeight / 4) * 4;
       if (w < 8 || h < 8) continue;
       key = w + 'x' + h;
-      sig.push(key);
-      if (_refractIds.get(el) !== key) {
-        _refractIds.set(el, key);
-        el.style.setProperty('--xsdoi-lg-f', 'url(#' + REFRACT_PREFIX + key + ')');
+      radius = Math.round(Math.min(w, h) / 2 * round);
+      sig.push(key + '@' + radius);
+      var prev = _refractIds.get(el);
+      if (!prev || prev.key !== key || prev.radius !== radius) {
+        _refractIds.set(el, { key: key, radius: radius });
+        if (liquid) {
+          el.style.setProperty('--xsdoi-lg-f', 'url(#' + REFRACT_PREFIX + key + ')');
+        } else {
+          el.style.removeProperty('--xsdoi-lg-f');
+        }
+        el.style.setProperty('--xsdoi-lg-radius', radius + 'px');
       }
-      if (!seen[key]) {
-        seen[key] = 1;
-        defs.push(makeFilterSVG(REFRACT_PREFIX + key, w, h, refractScale(w, h)));
-      }
+      if (!liquid || seen[key]) continue;
+      seen[key] = 1;
+      defs.push(makeFilterSVG(REFRACT_PREFIX + key, w, h, refractScale(w, h)));
     }
-    sig = sig.join(',');
-    if (sig === _refractSig) return;   // 尺寸没变，不重建
+    sig = sig.join(',') + '|' + (liquid ? 'L' : 'N');
+    if (sig === _refractSig) return;   // 尺寸/圆角没变，不重建
     _refractSig = sig;
     if (!defs.length) { removeFilter(); return; }
     ensureHost().innerHTML =
@@ -196,6 +213,7 @@
   function buildCSS(alpha, mode, round) {
     var a = alpha.toFixed(2);
     var liquid = mode === 'liquid';
+    _refractSels = [];
     // 元素专属毛玻璃模糊（滑块/进度条玻璃棒、深色标签、AI 横幅）：仅 acrylic 毛玻璃模式生成
     var bf = function (px) {
       return mode === 'acrylic'
@@ -2159,10 +2177,12 @@
     var roundList = acrylicOnly.filter(function (sel) {
       return sel !== '#nav' && sel !== '.oj-topbar';
     });
+    _roundSels = roundList;
     if (roundList.length) {
       rules.push(
         selLine(roundList),
-        '  border-radius: calc(' + rv + ' * 50%) !important;',
+        // 优先用 JS 下发的像素半径（各向同性）；JS 未跑时才退回百分比
+        '  border-radius: var(--xsdoi-lg-radius, calc(' + rv + ' * 50%)) !important;',
         '}',
         pseudo(roundList, '::before'),
         '  border-radius: inherit !important;',
@@ -2241,12 +2261,8 @@
       s.textContent = css;
       (document.head || document.documentElement).appendChild(s);
     }
-    // 真折射：按元素尺寸生成专属滤镜（关掉时移除，避免留下无用节点）
-    if (state.mode === 'liquid') {
-      syncRefract(_refractSels);
-    } else {
-      removeFilter();
-    }
+    // 按元素尺寸下发圆角变量（三模式共有）+ liquid 模式生成专属折射滤镜
+    syncRefract(_roundSels.length ? _roundSels : _refractSels);
     applyLvBg(state.alpha);
   }
 
