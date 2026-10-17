@@ -393,12 +393,35 @@
       '.bh-actions { display:flex; align-items:center; gap:6px; }',
       '.bh-empty { color:#999; padding:24px 0; text-align:center; }',
       '.bh-error { color:#e6a23c; padding:24px 0; text-align:center; }',
+      /* 分页栏（V4.7.9）：亮色 */
+      '.bh-pager-total { font-size:12px; color:#8a919f; margin-right:4px; }',
+      '.bh-page-btn, .bh-page-num { font-size:12px; line-height:1; padding:5px 9px; cursor:pointer;'
+        + ' background:#fff; color:#1f2329; border:1px solid #dcdfe6; border-radius:3px; }',
+      '.bh-page-btn:hover:not(:disabled), .bh-page-num:hover { border-color:#409eff; color:#409eff; }',
+      '.bh-page-btn:disabled { color:#c0c4cc; cursor:not-allowed; background:#f5f7fa; }',
+      '.bh-page-num.is-active { background:#409eff; border-color:#409eff; color:#fff; font-weight:600; }',
+      '.bh-page-gap { color:#909399; font-size:12px; padding:0 2px; }',
+      '.bh-page-size-label { font-size:12px; color:#8a919f; display:inline-flex; align-items:center; gap:4px; }',
+      '.bh-page-size { font-size:12px; padding:3px 4px; border:1px solid #dcdfe6; border-radius:3px;'
+        + ' background:#fff; color:#1f2329; }',
       'html.theme-dark [data-backup-panel="1"] { background:#1f2329; }',
       'html.theme-dark .bh-panel-title { color:#e6e8eb; }',
       'html.theme-dark .bh-item { border-bottom-color:#33363d; }',
       'html.theme-dark .bh-time { color:#d0d3d9; }',
       'html.theme-dark .bh-reason { color:#9aa1ad; }',
       'html.theme-dark .bh-empty { color:#6b7280; }',
+      /* 分页栏（V4.7.9）：暗色 */
+      'html.theme-dark .bh-pager-total { color:#9aa1ad; }',
+      'html.theme-dark .bh-page-btn, html.theme-dark .bh-page-num {'
+        + ' background:#2a2e36; color:#d0d3d9; border-color:#4b5563; }',
+      'html.theme-dark .bh-page-btn:hover:not(:disabled), html.theme-dark .bh-page-num:hover {'
+        + ' border-color:#66a6ff; color:#66a6ff; }',
+      'html.theme-dark .bh-page-btn:disabled { color:#5c6470; cursor:not-allowed; background:#242832; }',
+      'html.theme-dark .bh-page-num.is-active { background:#409eff; border-color:#409eff; color:#fff; }',
+      'html.theme-dark .bh-page-gap { color:#6b7280; }',
+      'html.theme-dark .bh-page-size-label { color:#9aa1ad; }',
+      'html.theme-dark .bh-page-size { background:#2a2e36; color:#d0d3d9; border-color:#4b5563; }',
+      'html.theme-dark [data-bh-pager="1"] { border-top-color:#33363d; }',
       'html.theme-dark [data-backup-btn="1"] { background:transparent; border-color:#4b5563; color:#d0d3d9; }',
       '.auto-backup-dropdown { position:absolute; z-index:2000; top:100%; left:0; min-width:100%; background:#fff; border:1px solid #e4e7ed; border-radius:4px; box-shadow:0 2px 12px rgba(0,0,0,0.12); padding:6px 0; margin-top:4px; box-sizing:border-box; }',
       '.auto-backup-option { padding:6px 16px; font-size:13px; color:#606266; cursor:pointer; white-space:nowrap; }',
@@ -486,11 +509,20 @@
     // 面板（正常流，放在 el-tabs 后面；点「备份历史」时隐藏原生内容、显示面板，实现切换而非覆盖）
     var panel = document.createElement('div');
     panel.setAttribute('data-backup-panel', '1');
-    panel.style.cssText = 'display:none;overflow-y:auto;padding:16px;box-sizing:border-box;';
+    /* ⚠️ V4.7.9 修「备份历史不能滚动」：
+       原先只有 overflow-y:auto 却没设高度上限 ⇒ 面板高度由内容决定，
+       备份一多就把面板撑高，变成页面级滚动，面板自身永远滚不动。
+       现在：面板做 flex 列布局 + max-height 上限，内部三层各司其职——
+         bar(标题/按钮) 固定、listBox 弹性滚动、pager 固定底部分页。
+       分页后每页只渲染 pageSize 条，DOM 节点数不再随备份总量增长。 */
+    panel.style.cssText = 'display:none;box-sizing:border-box;'
+      + 'max-height:calc(100vh - 260px);min-height:200px;'
+      + 'flex-direction:column;';
 
     // 标题栏：标题 + 刷新按钮
     var bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;';
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;'
+      + 'margin-bottom:12px;flex:none;';
     var title = document.createElement('div');
     title.className = 'bh-panel-title';
     title.textContent = '备份历史';
@@ -509,24 +541,130 @@
     bar.appendChild(title);
     bar.appendChild(barRight);
 
-    // 列表容器
+    // 列表容器（弹性滚动区）
     var listBox = document.createElement('div');
     listBox.setAttribute('data-bh-list', '1');
+    listBox.style.cssText = 'flex:1 1 auto;overflow-y:auto;min-height:0;';
+
+    // 分页栏（固定底部，不随列表滚动）
+    var pager = document.createElement('div');
+    pager.setAttribute('data-bh-pager', '1');
+    pager.style.cssText = 'display:none;flex:none;align-items:center;gap:8px;'
+      + 'margin-top:12px;padding-top:10px;border-top:1px solid #f0f1f2;flex-wrap:wrap;';
 
     panel.appendChild(bar);
     panel.appendChild(listBox);
+    panel.appendChild(pager);
+
+    // ===== 分页状态（V4.7.9）=====
+    var PAGE_SIZES = [20, 50, 100];
+    var pageSize = 20;
+    var currentPage = 1;
+    var allList = [];           // 全量备份（LIST_BACKUPS_BY_PROBLEM 一次取回）
+
+    function totalPages() {
+      return Math.max(1, Math.ceil(allList.length / pageSize));
+    }
+
+    /* 渲染分页栏。页码多时用省略号，最多并排 7 个数字键，
+       避免备份几百条时排出一长串按钮。 */
+    function renderPager() {
+      var total = allList.length;
+      if (total <= pageSize) { pager.style.display = 'none'; return; }
+      pager.style.display = 'flex';
+
+      var pages = totalPages();
+      if (currentPage > pages) currentPage = pages;
+      if (currentPage < 1) currentPage = 1;
+
+      function numBtn(p, label) {
+        return '<button type="button" class="bh-page-num'
+          + (p === currentPage ? ' is-active' : '') + '" data-page="' + p + '">'
+          + (label || p) + '</button>';
+      }
+
+      var html = '';
+      html += '<span class="bh-pager-total">共 ' + total + ' 条</span>';
+      html += '<button type="button" class="bh-page-btn" data-act="prev"'
+        + (currentPage <= 1 ? ' disabled' : '') + '>上一页</button>';
+
+      // 计算要显示的页码窗口（当前页居中，两边各留 3 个）
+      var win = 7, half = 3, from = currentPage - half, to = currentPage + half;
+      if (from < 1) { to += 1 - from; from = 1; }
+      if (to > pages) { from -= to - pages; to = pages; if (from < 1) from = 1; }
+      if (from > 1) {
+        html += numBtn(1);
+        if (from > 2) html += '<span class="bh-page-gap">…</span>';
+      }
+      for (var p = from; p <= to; p++) html += numBtn(p);
+      if (to < pages) {
+        if (to < pages - 1) html += '<span class="bh-page-gap">…</span>';
+        html += numBtn(pages);
+      }
+
+      html += '<button type="button" class="bh-page-btn" data-act="next"'
+        + (currentPage >= pages ? ' disabled' : '') + '>下一页</button>';
+
+      // 每页条数
+      html += '<label class="bh-page-size-label">每页'
+        + '<select class="bh-page-size">';
+      PAGE_SIZES.forEach(function (n) {
+        html += '<option value="' + n + '"' + (n === pageSize ? ' selected' : '') + '>' + n + '</option>';
+      });
+      html += '</select>条</label>';
+
+      pager.innerHTML = html;
+
+      // 绑定：页码 / 上页 / 下页
+      var btns = pager.querySelectorAll('[data-page], [data-act]');
+      for (var i = 0; i < btns.length; i++) {
+        (function (btn) {
+          btn.addEventListener('click', function () {
+            if (btn.hasAttribute('data-page')) {
+              currentPage = parseInt(btn.getAttribute('data-page'), 10) || 1;
+            } else {
+              var act = btn.getAttribute('data-act');
+              if (act === 'prev') currentPage--;
+              else currentPage++;
+            }
+            renderPage();
+            listBox.scrollTop = 0;
+          });
+        })(btns[i]);
+      }
+      // 绑定：每页条数
+      var sel = pager.querySelector('.bh-page-size');
+      if (sel) {
+        sel.addEventListener('change', function () {
+          pageSize = parseInt(sel.value, 10) || 20;
+          currentPage = 1;
+          renderPage();
+          listBox.scrollTop = 0;
+        });
+      }
+    }
 
     // 插入到 el-tabs 后面（兄弟节点）
     tabsEl.parentNode.insertBefore(panel, tabsEl.nextSibling);
 
-    function render(list) {
-      title.textContent = (list && list.length) ? '备份历史（' + list.length + ' 条）' : '备份历史';
-      if (!list || list.length === 0) {
+    /* 渲染「当前页」的条目 + 分页栏（V4.7.9 分页改造）。
+       allList 是全量数据，这里只切片出当前页渲染。 */
+    function renderPage() {
+      var total = allList.length;
+      if (!total) {
+        title.textContent = '备份历史';
         listBox.innerHTML = '<div class="bh-empty">该题目还没有备份</div>';
+        renderPager();
         return;
       }
+      var pages = totalPages();
+      if (currentPage > pages) currentPage = pages;
+      var start = (currentPage - 1) * pageSize;
+      var pageItems = allList.slice(start, start + pageSize);
+
+      title.textContent = '备份历史（' + total + ' 条）';
       var html = '';
-      list.forEach(function (item) {
+      pageItems.forEach(function (item) {
         html += '<div class="bh-item">'
           + '<span>'
           + '<span class="bh-time">' + formatTime(item.time) + '</span>'
@@ -571,21 +709,31 @@
           });
         })(delBtns[i]);
       }
+
+      renderPager();
     }
 
     function loadList() {
       var pid = getProblemId();
       if (!pid) {
+        allList = [];
         listBox.innerHTML = '<div class="bh-empty">无法识别题目 ID</div>';
+        pager.style.display = 'none';
         return;
       }
       chrome.runtime.sendMessage({ type: 'LIST_BACKUPS_BY_PROBLEM', problemId: pid }, function (resp) {
         if (chrome.runtime.lastError) {
-          listBox.innerHTML = '<div class="bh-error">读取失败：' + chrome.runtime.lastError.message + '<br><br>请确认扩展已在 edge://extensions 重新加载</div>';
+          allList = [];
+          listBox.innerHTML = '<div class="bh-error">读取失败：' + chrome.runtime.lastError.message
+            + '<br><br>请确认扩展已在 edge://extensions 重新加载</div>';
+          pager.style.display = 'none';
           return;
         }
-        if (resp && resp.ok) render(resp.list);
-        else render([]);
+        allList = (resp && resp.ok && resp.list) ? resp.list : [];
+        /* 删除后 currentPage 可能越界（例如删光了最后一页）→ renderPage 内部会夹回末页，
+           这里只需在页数变小时兜底一次，保证按钮状态正确。 */
+        if (currentPage > totalPages()) currentPage = totalPages();
+        renderPage();
       });
     }
 
@@ -612,7 +760,10 @@
 
     function show() {
       if (contentEl) contentEl.style.display = 'none';
-      panel.style.display = 'block';
+      /* display 必须是 flex —— 面板是 flex 列布局（bar 固定 / listBox 弹性滚动 /
+         pager 固定底部），用 block 会让 flex 全部失效：listBox 不收缩、
+         分页栏被顶出视口（V4.7.9 实测踩过）。 */
+      panel.style.display = 'flex';
       var items = nav.querySelectorAll('.el-tabs__item');
       for (var i = 0; i < items.length; i++) {
         if (items[i] !== tab) items[i].classList.remove('is-active');
@@ -630,7 +781,7 @@
     tab.addEventListener('click', function (e) {
       e.stopPropagation();
       e.preventDefault();
-      if (panel.style.display === 'block') hide();
+      if (panel.style.display === 'flex') hide();
       else show();
     });
 
