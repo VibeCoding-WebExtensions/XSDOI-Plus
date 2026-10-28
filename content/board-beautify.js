@@ -93,6 +93,13 @@
   // ============================================================
 
   var FILTER_HOST_ID = 'xsdoi-lg-filter-host';
+
+  /* 圆角上限（像素）。V4.8.0 起圆角改「绝对像素」语义：
+     round 0~1 线性映射到 0~MAX_RADIUS px，再夹到 min(w,h)/2 以内。
+     不再用 min(w,h)/2 * round —— 那会让 745×519 的大卡片得到 130px 圆角，
+     视觉上变药丸形并裁掉卡片内容（真实站点实测）。圆角本质是视觉常量，
+     不该随卡片面积放大。 */
+  var MAX_RADIUS = 40;
   var REFRACT_PREFIX = 'xsdoi-lg-f-';
   var _refractIds = new WeakMap();   // el -> filter id，避免反复写 DOM
   var _refractSig = '';              // 尺寸签名；未变则不重建滤镜宿主
@@ -368,7 +375,8 @@
       h = Math.ceil(el.offsetHeight / 4) * 4;
       if (w < 8 || h < 8) continue;
       key = w + 'x' + h;
-      radius = Math.round(Math.min(w, h) / 2 * round);
+      // 绝对像素语义：round*40，且不超过元素半高（小元素不能圆成半圆以上）
+      radius = Math.round(Math.min(round * MAX_RADIUS, Math.min(w, h) / 2));
       sig.push(key + '@' + radius);
       var prev = _refractIds.get(el);
       if (!prev || prev.key !== key || prev.radius !== radius) {
@@ -2362,7 +2370,9 @@
     /* ===== 统一圆角（V4.7.5 新增）=====
        ⚠️ 必须放在 buildCSS 末尾：前面有大量硬编码的 12px / 999px / 50% 圆角规则，
        本规则靠源码顺序（同特异性下后者胜）统一覆盖。
-       排除通栏框架（#nav / .oj-topbar）—— 它们贴边，加圆角会露缝。 */
+       排除通栏框架（#nav / .oj-topbar）—— 它们贴边，加圆角会露缝。
+       V4.8.0：语义改为绝对像素（0~40px），不再随元素尺寸放大；
+       见 syncRefract 里 MAX_RADIUS 的说明。 */
     var rv = (typeof round === 'number' ? round : DEFAULT_ROUND).toFixed(3);
     var roundList = acrylicOnly.filter(function (sel) {
       return sel !== '#nav' && sel !== '.oj-topbar';
@@ -2372,7 +2382,7 @@
       rules.push(
         selLine(roundList),
         // 优先用 JS 下发的像素半径（各向同性）；JS 未跑时才退回百分比
-        '  border-radius: var(--xsdoi-lg-radius, calc(' + rv + ' * 50%)) !important;',
+        '  border-radius: var(--xsdoi-lg-radius, calc(' + rv + ' * ' + MAX_RADIUS + 'px)) !important;',
         '}',
         pseudo(roundList, '::before'),
         '  border-radius: inherit !important;',
